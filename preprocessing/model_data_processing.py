@@ -147,9 +147,9 @@ def safe_name(text: str) -> str:
 
 def relative_or_absolute(path: Path) -> str:
     try:
-        return str(path.resolve().relative_to(REPO_ROOT))
+        return path.resolve().relative_to(REPO_ROOT).as_posix()
     except ValueError:
-        return str(path.resolve())
+        return path.resolve().as_posix()
 
 
 def fits_image_shape(path: Path) -> tuple[int, int]:

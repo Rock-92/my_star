@@ -217,7 +217,7 @@ class StarMapDataset(Dataset):
 
     @staticmethod
     def _resolve_manifest_path(value: str) -> Path:
-        path = Path(value)
+        path = Path(value.replace("\\", "/"))
         if path.is_absolute():
             return path
         return REPO_ROOT / path
