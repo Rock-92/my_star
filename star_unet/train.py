@@ -43,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", default=defaults.get("out_dir", "runs/star_unet"), help="Directory for checkpoints and metrics.")
     parser.add_argument("--epochs", type=int, default=defaults.get("epochs", 100))
     parser.add_argument("--batch-size", type=int, default=defaults.get("batch_size", 4))
+    parser.add_argument("--val-batch-size", type=int, default=defaults.get("val_batch_size", defaults.get("batch_size", 4)))
     parser.add_argument("--lr", type=float, default=defaults.get("lr", 1e-3))
     parser.add_argument("--weight-decay", type=float, default=defaults.get("weight_decay", 5e-4))
     parser.add_argument("--bce-weight", type=float, default=defaults.get("bce_weight", 1.0))
@@ -84,7 +85,7 @@ def resolve_device(name: str) -> torch.device:
     return torch.device(name)
 
 
-def make_loader(args: argparse.Namespace, root: str, shuffle: bool, pin_memory: bool) -> DataLoader:
+def make_loader(args: argparse.Namespace, root: str, shuffle: bool, pin_memory: bool, batch_size: int) -> DataLoader:
     augmentation = args.augmentation if shuffle else None
     crop = args.crop if shuffle else args.val_crop
     dataset = StarMapDataset(
@@ -96,7 +97,7 @@ def make_loader(args: argparse.Namespace, root: str, shuffle: bool, pin_memory: 
     )
     return DataLoader(
         dataset,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=shuffle,
         num_workers=args.num_workers,
         pin_memory=pin_memory,
@@ -195,12 +196,16 @@ def main() -> None:
     if not scaler.is_enabled():
         scaler = None
 
-    train_loader = make_loader(args, args.train_dir, shuffle=True, pin_memory=pin_memory)
-    val_loader = make_loader(args, args.val_dir, shuffle=False, pin_memory=pin_memory) if args.val_dir else None
+    train_loader = make_loader(args, args.train_dir, shuffle=True, pin_memory=pin_memory, batch_size=args.batch_size)
+    val_loader = (
+        make_loader(args, args.val_dir, shuffle=False, pin_memory=pin_memory, batch_size=args.val_batch_size)
+        if args.val_dir
+        else None
+    )
     print(
         f"[start] device={device}, train_samples={len(train_loader.dataset)}, "
         f"val_samples={len(val_loader.dataset) if val_loader is not None else 0}, "
-        f"epochs={args.epochs}, batch_size={args.batch_size}",
+        f"epochs={args.epochs}, batch_size={args.batch_size}, val_batch_size={args.val_batch_size}",
         flush=True,
     )
 
@@ -225,6 +230,8 @@ def main() -> None:
 
         row = {"epoch": epoch, "train": train_metrics}
         if val_loader is not None:
+            if device.type == "cuda":
+                torch.cuda.empty_cache()
             print(f"[epoch {epoch:03d}] validation", flush=True)
             with torch.no_grad():
                 val_metrics = run_epoch(
