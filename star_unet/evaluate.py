@@ -42,6 +42,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preview-count", type=int, default=12)
     parser.add_argument("--tile-size", type=int, default=1024)
     parser.add_argument("--tile-overlap", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=1, help="Number of tiles to run per model forward pass.")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Accepted for command compatibility; this evaluator reads samples sequentially.",
+    )
     parser.add_argument("--device", default=None)
     parser.add_argument("--skip-model", action="store_true")
     return parser.parse_args()
@@ -55,7 +62,7 @@ def parse_thresholds(text: str) -> list[float]:
 
 
 def resolve_path(path_text: str | Path) -> Path:
-    path = Path(path_text)
+    path = Path(str(path_text).replace("\\", "/"))
     if path.is_absolute():
         return path
     return REPO_ROOT / path
@@ -230,6 +237,7 @@ def main() -> None:
                 tile_overlap=args.tile_overlap,
                 fit_channel_mode=fit_channel_mode,
                 device=device,
+                batch_size=args.batch_size,
             )
             for threshold in thresholds:
                 pred_centroids = heatmap_to_centroids(
@@ -268,6 +276,8 @@ def main() -> None:
             "match_radius_px": float(args.match_radius_px),
             "tile_size": int(args.tile_size),
             "tile_overlap": int(args.tile_overlap),
+            "batch_size": int(args.batch_size),
+            "num_workers": int(args.num_workers),
         },
         "best_unet": best_unet,
         "summary": summary,

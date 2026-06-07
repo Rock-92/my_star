@@ -31,6 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-peaks", type=int, default=None)
     parser.add_argument("--tile-size", type=int, default=1024)
     parser.add_argument("--tile-overlap", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=1, help="Number of tiles to run per model forward pass.")
     parser.add_argument("--fit-channel-mode", default=None, choices=("mean", "first", "max", "luma"))
     parser.add_argument("--device", default=None)
     return parser.parse_args()
@@ -61,6 +62,7 @@ def predict_heatmap(
     tile_overlap: int,
     fit_channel_mode: str,
     device: torch.device,
+    batch_size: int = 1,
 ) -> np.ndarray:
     del fit_channel_mode
     image = np.asarray(image, dtype=np.float32)
@@ -80,14 +82,24 @@ def predict_heatmap(
 
     acc = np.zeros((h, w), dtype=np.float32)
     weight = np.zeros((h, w), dtype=np.float32)
+    tiles: list[np.ndarray] = []
+    boxes: list[tuple[int, int, int, int]] = []
     for y0 in y_starts:
         for x0 in x_starts:
             y1 = min(h, y0 + tile_size)
             x1 = min(w, x0 + tile_size)
             tile = image[y0:y1, x0:x1]
-            tensor = torch.from_numpy(tile[None, None, :, :].astype(np.float32)).to(device)
-            logits = model(tensor)
-            pred = torch.sigmoid(logits)[0, 0].detach().cpu().numpy().astype(np.float32)
+            tiles.append(tile.astype(np.float32))
+            boxes.append((y0, y1, x0, x1))
+
+    batch_size = max(1, int(batch_size))
+    for start in range(0, len(tiles), batch_size):
+        batch_tiles = tiles[start : start + batch_size]
+        batch_boxes = boxes[start : start + batch_size]
+        tensor = torch.from_numpy(np.stack(batch_tiles, axis=0)[:, None, :, :]).to(device)
+        logits = model(tensor)
+        preds = torch.sigmoid(logits)[:, 0].detach().cpu().numpy().astype(np.float32)
+        for pred, (y0, y1, x0, x1) in zip(preds, batch_boxes):
             acc[y0:y1, x0:x1] += pred
             weight[y0:y1, x0:x1] += 1.0
     return acc / np.maximum(weight, 1.0)
@@ -102,10 +114,11 @@ def predict_one(
     device: torch.device,
     tile_size: int = 1024,
     tile_overlap: int = 128,
+    batch_size: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
     raw = _read_input_image(image_path, fit_channel_mode)
     image = _normalize_image(raw, config.get("image_normalization", {}))
-    heatmap = predict_heatmap(model, image, tile_size, tile_overlap, fit_channel_mode, device)
+    heatmap = predict_heatmap(model, image, tile_size, tile_overlap, fit_channel_mode, device, batch_size=batch_size)
     return raw, heatmap
 
 
@@ -130,6 +143,7 @@ def main() -> None:
             device,
             tile_size=args.tile_size,
             tile_overlap=args.tile_overlap,
+            batch_size=args.batch_size,
         )
         centroids = heatmap_to_centroids(
             heatmap,
