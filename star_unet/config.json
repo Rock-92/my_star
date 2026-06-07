@@ -1,0 +1,49 @@
+{
+  "train_dir": "data/data_model/train",
+  "val_dir": "data/data_model/val",
+  "out_dir": "runs/star_unet",
+
+  "epochs": 100,
+  "batch_size": 16,
+  "lr": 0.001,
+  "weight_decay": 0.0005,
+
+  "bce_weight": 1.0,
+  "dice_weight": 1.0,
+  "positive_weight": 30,
+
+  "features": [32, 64, 128],
+  "num_workers": 4,
+  "device": "auto",
+  "amp": false,
+  "fit_channel_mode": "mean",
+
+  "image_normalization": {
+    "mode": "percentile",
+    "lower_percentile": 0.5,
+    "upper_percentile": 99.8
+  },
+
+  "crop": {
+    "enabled": true,
+    "height": 1024,
+    "width": 1024,
+    "mode": "random"
+  },
+
+  "val_crop": {
+    "enabled": false
+  },
+
+  "scheduler_step_size": 20,
+  "scheduler_gamma": 0.5,
+
+  "augmentation": {
+    "enabled": true,
+    "rotation": {
+      "enabled": true,
+      "degrees": 180.0,
+      "prob": 1.0
+    }
+  }
+}

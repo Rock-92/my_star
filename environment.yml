@@ -1,0 +1,23 @@
+name: my_star
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+
+  # Core scientific stack
+  - numpy
+  - scipy
+  - pandas
+  - pillow
+  - opencv
+
+  # Astronomy FITS/WCS and optional Gaia download/evaluation tools
+  - astropy
+  - astroquery
+
+  # GPU training stack. Change pytorch-cuda if the cloud image uses another CUDA version.
+  - pytorch
+  - pytorch-cuda=12.1

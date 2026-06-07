@@ -1,0 +1,16 @@
+name: my_star
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - scipy
+  - pandas
+  - pillow
+  - opencv
+  - astropy
+  - astroquery
+
+  # Do not install standard pytorch-cuda here on DTK images.
+  # Use the cloud image's DTK-compatible PyTorch, or clone that environment.

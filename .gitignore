@@ -1,0 +1,16 @@
+# Local data and generated artifacts
+data/
+analysis/
+analysis_outputs/
+test_image/
+testimage/
+testimages/
+preprocessing/gaia_data/
+make_star/gaia.csv
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Training checkpoints/logs
+runs/
