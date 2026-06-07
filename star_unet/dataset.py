@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from preprocessing.mask_generator import FITS_SUFFIXES, read_gray_image
 BITMAP_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 IMAGE_SUFFIXES = BITMAP_SUFFIXES | FITS_SUFFIXES
 MASK_SUFFIXES = BITMAP_SUFFIXES
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _read_bitmap_gray(path: Path) -> np.ndarray:
@@ -200,14 +202,41 @@ class StarMapDataset(Dataset):
             raise FileNotFoundError(f"missing mask directory: {self.mask_dir}")
 
         self.samples: list[tuple[Path, Path]] = []
-        for image_path in sorted(self.image_dir.iterdir()):
-            if image_path.suffix.lower() not in IMAGE_SUFFIXES:
-                continue
-            mask_path = self._matching_file(self.mask_dir, image_path.stem)
-            self.samples.append((image_path, mask_path))
+        manifest = self.root.parent / "manifest.csv"
+        if manifest.exists() and self.root.name in {"train", "val"}:
+            self.samples = self._samples_from_manifest(manifest, split=self.root.name)
+        else:
+            for image_path in sorted(self.image_dir.iterdir()):
+                if image_path.suffix.lower() not in IMAGE_SUFFIXES:
+                    continue
+                mask_path = self._matching_file(self.mask_dir, image_path.stem)
+                self.samples.append((image_path, mask_path))
 
         if not self.samples:
             raise RuntimeError(f"no samples found under {self.image_dir}")
+
+    @staticmethod
+    def _resolve_manifest_path(value: str) -> Path:
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return REPO_ROOT / path
+
+    def _samples_from_manifest(self, manifest: Path, split: str) -> list[tuple[Path, Path]]:
+        samples: list[tuple[Path, Path]] = []
+        with manifest.open("r", newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                if row.get("split") != split:
+                    continue
+                image_path = self._resolve_manifest_path(row.get("image_out") or row.get("single_fits") or "")
+                mask_path = self._resolve_manifest_path(row.get("mask_out") or "")
+                if not image_path.exists():
+                    raise FileNotFoundError(f"manifest image does not exist: {image_path}")
+                if not mask_path.exists():
+                    raise FileNotFoundError(f"manifest mask does not exist: {mask_path}")
+                samples.append((image_path, mask_path))
+        return samples
 
     @staticmethod
     def _matching_file(directory: Path, stem: str) -> Path:
