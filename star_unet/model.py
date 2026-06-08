@@ -6,8 +6,6 @@ import torch.nn.functional as F
 
 
 class DoubleConv(nn.Module):
-    """Two 3x3 convolutions used by the vanilla U-Net blocks."""
-
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -23,66 +21,79 @@ class DoubleConv(nn.Module):
         return self.net(x)
 
 
-class Down(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int) -> None:
+class DilatedConv(nn.Module):
+    def __init__(self, channels: int, dilation: int) -> None:
         super().__init__()
-        self.net = nn.Sequential(nn.MaxPool2d(2), DoubleConv(in_channels, out_channels))
+        self.net = nn.Sequential(
+            nn.Conv2d(
+                channels,
+                channels,
+                kernel_size=3,
+                padding=int(dilation),
+                dilation=int(dilation),
+                bias=False,
+            ),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
 
-class Up(nn.Module):
-    def __init__(self, in_channels: int, skip_channels: int, out_channels: int) -> None:
+class DilatedBottleneck(nn.Module):
+    def __init__(self, channels: int, dilations: tuple[int, ...] = (1, 2, 4, 8)) -> None:
         super().__init__()
-        self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
-        self.conv = DoubleConv(out_channels + skip_channels, out_channels)
+        self.blocks = nn.ModuleList(DilatedConv(channels, dilation) for dilation in dilations)
+        self.fuse = nn.Sequential(
+            nn.Conv2d(channels * len(dilations), channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+        )
 
-    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
-        x = self.up(x)
-        dy = skip.size(2) - x.size(2)
-        dx = skip.size(3) - x.size(3)
-        if dx != 0 or dy != 0:
-            x = F.pad(x, [dx // 2, dx - dx // 2, dy // 2, dy - dy // 2])
-        return self.conv(torch.cat([skip, x], dim=1))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        features = [block(x) for block in self.blocks]
+        return self.fuse(torch.cat(features, dim=1)) + x
 
 
 class UNet(nn.Module):
-    """Vanilla U-Net for single-channel star segmentation."""
+    """Shallow U-Net with 2x downsampling and a dilated bottleneck."""
 
     def __init__(
         self,
         in_channels: int = 1,
         out_channels: int = 1,
-        features: tuple[int, ...] = (32, 64, 128, 256),
+        features: tuple[int, ...] = (32, 64),
     ) -> None:
         super().__init__()
-        if len(features) < 2:
-            raise ValueError("features must contain at least two channel sizes")
+        if len(features) != 2:
+            raise ValueError("2x-dilated UNet expects exactly two feature sizes, for example (32, 64)")
 
-        self.inc = DoubleConv(in_channels, features[0])
-        self.downs = nn.ModuleList(
-            Down(features[i], features[i + 1]) for i in range(len(features) - 1)
+        low_channels, high_channels = int(features[0]), int(features[1])
+        self.enc1 = DoubleConv(in_channels, low_channels)
+        self.down = nn.Sequential(
+            nn.MaxPool2d(2),
+            DoubleConv(low_channels, high_channels),
         )
-        self.bottleneck = DoubleConv(features[-1], features[-1] * 2)
+        self.bottleneck = DilatedBottleneck(high_channels)
 
-        decoder_in = features[-1] * 2
-        self.ups = nn.ModuleList()
-        for skip_channels in reversed(features):
-            self.ups.append(Up(decoder_in, skip_channels, skip_channels))
-            decoder_in = skip_channels
-
-        self.outc = nn.Conv2d(features[0], out_channels, kernel_size=1)
+        self.dec_half = DoubleConv(high_channels + high_channels, high_channels)
+        self.up = nn.ConvTranspose2d(high_channels, low_channels, kernel_size=2, stride=2)
+        self.dec_full = DoubleConv(low_channels + low_channels, low_channels)
+        self.outc = nn.Conv2d(low_channels, out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        skips = []
-        x = self.inc(x)
-        skips.append(x)
-        for down in self.downs:
-            x = down(x)
-            skips.append(x)
+        skip_full = self.enc1(x)
+        skip_half = self.down(skip_full)
 
-        x = self.bottleneck(x)
-        for up, skip in zip(self.ups, reversed(skips)):
-            x = up(x, skip)
+        x = self.bottleneck(skip_half)
+        x = self.dec_half(torch.cat([skip_half, x], dim=1))
+        x = self.up(x)
+
+        dy = skip_full.size(2) - x.size(2)
+        dx = skip_full.size(3) - x.size(3)
+        if dx != 0 or dy != 0:
+            x = F.pad(x, [dx // 2, dx - dx // 2, dy // 2, dy - dy // 2])
+
+        x = self.dec_full(torch.cat([skip_full, x], dim=1))
         return self.outc(x)

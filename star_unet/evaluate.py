@@ -49,6 +49,13 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Accepted for command compatibility; this evaluator reads samples sequentially.",
     )
+    parser.add_argument("--skip-baselines", action="store_true", help="Do not run traditional baseline extractors.")
+    parser.add_argument(
+        "--cache-predictions",
+        action="store_true",
+        help="Save and reuse model heatmaps so threshold sweeps can run without another forward pass.",
+    )
+    parser.add_argument("--prediction-cache-dir", type=Path, default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--skip-model", action="store_true")
     return parser.parse_args()
@@ -168,6 +175,11 @@ def finalize_summary(acc: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
+def prediction_cache_path(out_dir: Path, args: argparse.Namespace, sample_id: str) -> Path:
+    cache_dir = resolve_path(args.prediction_cache_dir) if args.prediction_cache_dir is not None else out_dir / "prediction_cache"
+    return cache_dir / f"{sample_id}.npy"
+
+
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
@@ -220,25 +232,34 @@ def main() -> None:
             "methods": [],
         }
 
-        for method in METHODS:
-            result = generate_mask(raw, method, bargs)
-            metrics = detection_metrics(result.centroids_yx, target_centroids, radius_px=args.match_radius_px)
-            metrics = {"method": method, **metrics}
-            sample_result["methods"].append(metrics)
-            add_summary(summary_acc, method, metrics)
-            add_summary(summary_by_reason, f"{method}/{split_reason}", metrics)
+        if not args.skip_baselines:
+            for method in METHODS:
+                result = generate_mask(raw, method, bargs)
+                metrics = detection_metrics(result.centroids_yx, target_centroids, radius_px=args.match_radius_px)
+                metrics = {"method": method, **metrics}
+                sample_result["methods"].append(metrics)
+                add_summary(summary_acc, method, metrics)
+                add_summary(summary_by_reason, f"{method}/{split_reason}", metrics)
 
         model_heatmap = None
         if model is not None:
-            model_heatmap = predict_heatmap(
-                model,
-                image,
-                tile_size=args.tile_size,
-                tile_overlap=args.tile_overlap,
-                fit_channel_mode=fit_channel_mode,
-                device=device,
-                batch_size=args.batch_size,
-            )
+            sample_id = str(sample.get("sample_id") or image_path.stem)
+            cache_path = prediction_cache_path(out_dir, args, sample_id)
+            if args.cache_predictions and cache_path.exists():
+                model_heatmap = np.load(cache_path).astype(np.float32)
+            else:
+                model_heatmap = predict_heatmap(
+                    model,
+                    image,
+                    tile_size=args.tile_size,
+                    tile_overlap=args.tile_overlap,
+                    fit_channel_mode=fit_channel_mode,
+                    device=device,
+                    batch_size=args.batch_size,
+                )
+                if args.cache_predictions:
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    np.save(cache_path, model_heatmap.astype(np.float16))
             for threshold in thresholds:
                 pred_centroids = heatmap_to_centroids(
                     model_heatmap,
@@ -278,6 +299,11 @@ def main() -> None:
             "tile_overlap": int(args.tile_overlap),
             "batch_size": int(args.batch_size),
             "num_workers": int(args.num_workers),
+            "skip_baselines": bool(args.skip_baselines),
+            "cache_predictions": bool(args.cache_predictions),
+            "prediction_cache_dir": str(resolve_path(args.prediction_cache_dir))
+            if args.prediction_cache_dir is not None
+            else str(out_dir / "prediction_cache"),
         },
         "best_unet": best_unet,
         "summary": summary,

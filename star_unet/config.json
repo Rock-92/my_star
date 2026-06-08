@@ -10,10 +10,16 @@
   "weight_decay": 0.0005,
 
   "bce_weight": 1.0,
-  "dice_weight": 1.0,
+  "dice_weight": 0.2,
   "positive_weight": 30,
+  "loss_mode": "error_focused",
+  "false_positive_weight": 15.0,
+  "false_negative_weight": 15.0,
+  "target_positive_threshold": 0.5,
+  "target_negative_threshold": 0.05,
+  "hard_negative_threshold": 0.1,
 
-  "features": [32, 64, 128],
+  "features": [32, 64],
   "num_workers": 4,
   "device": "auto",
   "amp": false,

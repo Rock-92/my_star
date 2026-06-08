@@ -49,7 +49,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bce-weight", type=float, default=defaults.get("bce_weight", 1.0))
     parser.add_argument("--dice-weight", type=float, default=defaults.get("dice_weight", 1.0))
     parser.add_argument("--positive-weight", type=float, default=defaults.get("positive_weight"))
-    parser.add_argument("--features", default=defaults.get("features", "32,64,128,256"), help="Comma-separated U-Net channel sizes.")
+    parser.add_argument("--loss-mode", default=defaults.get("loss_mode", "bce_dice"), choices=("bce_dice", "error_focused"))
+    parser.add_argument("--false-positive-weight", type=float, default=defaults.get("false_positive_weight", 10.0))
+    parser.add_argument("--false-negative-weight", type=float, default=defaults.get("false_negative_weight", 10.0))
+    parser.add_argument("--target-positive-threshold", type=float, default=defaults.get("target_positive_threshold", 0.5))
+    parser.add_argument("--target-negative-threshold", type=float, default=defaults.get("target_negative_threshold", 0.05))
+    parser.add_argument("--hard-negative-threshold", type=float, default=defaults.get("hard_negative_threshold", 0.1))
+    parser.add_argument("--features", default=defaults.get("features", "32,64"), help="Comma-separated U-Net channel sizes.")
     parser.add_argument("--num-workers", type=int, default=defaults.get("num_workers", 0))
     parser.add_argument("--device", default=defaults.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
     parser.add_argument("--amp", action="store_true", default=bool(defaults.get("amp", False)), help="Use mixed precision on CUDA.")
@@ -185,6 +191,12 @@ def main() -> None:
         bce_weight=args.bce_weight,
         dice_weight=args.dice_weight,
         positive_weight=args.positive_weight,
+        mode=args.loss_mode,
+        false_positive_weight=args.false_positive_weight,
+        false_negative_weight=args.false_negative_weight,
+        target_positive_threshold=args.target_positive_threshold,
+        target_negative_threshold=args.target_negative_threshold,
+        hard_negative_threshold=args.hard_negative_threshold,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(

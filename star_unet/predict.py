@@ -45,7 +45,7 @@ def input_files(path: Path, recursive: bool) -> list[Path]:
 
 
 def load_model(checkpoint_path: Path, config: dict[str, Any], device: torch.device) -> UNet:
-    features = parse_features(config.get("features", [32, 64, 128, 256]))
+    features = parse_features(config.get("features", [32, 64]))
     model = UNet(in_channels=1, out_channels=1, features=features).to(device)
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state = checkpoint["model"] if isinstance(checkpoint, dict) and "model" in checkpoint else checkpoint
