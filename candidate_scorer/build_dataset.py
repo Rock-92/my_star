@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=Path("data/candidate_scorer_sigma2p5"))
     parser.add_argument("--sigma", type=float, default=2.5)
     parser.add_argument("--crop-size", type=int, default=1024)
+    parser.add_argument("--crop-mode", choices=("center", "random"), default="center")
+    parser.add_argument("--crops-per-image", type=int, default=1)
     parser.add_argument("--patch-size", type=int, default=31)
     parser.add_argument("--channels", type=int, choices=(1, 3), default=1)
     parser.add_argument("--train-samples", type=int, default=24)
@@ -49,15 +51,29 @@ def spread_subset(rows: list[dict[str, str]], limit: int) -> list[dict[str, str]
     return [rows[int(index)] for index in indexes]
 
 
-def center_crop(array: np.ndarray, size: int) -> np.ndarray:
+def crop_at(array: np.ndarray, size: int, y0: int, x0: int) -> np.ndarray:
     if size <= 0:
         return array
     h, w = array.shape[:2]
     crop_h = min(size, h)
     crop_w = min(size, w)
-    y0 = max(0, (h - crop_h) // 2)
-    x0 = max(0, (w - crop_w) // 2)
     return array[y0 : y0 + crop_h, x0 : x0 + crop_w]
+
+
+def crop_origins(shape: tuple[int, int], size: int, mode: str, count: int, rng: np.random.Generator) -> list[tuple[int, int]]:
+    if size <= 0:
+        return [(0, 0)]
+    h, w = shape[:2]
+    crop_h = min(size, h)
+    crop_w = min(size, w)
+    if mode == "center":
+        return [(max(0, (h - crop_h) // 2), max(0, (w - crop_w) // 2))]
+    origins = []
+    for _ in range(max(1, int(count))):
+        y0 = int(rng.integers(0, max(h - crop_h + 1, 1)))
+        x0 = int(rng.integers(0, max(w - crop_w + 1, 1)))
+        origins.append((y0, x0))
+    return origins
 
 
 def daofind_args(sigma: float) -> SimpleNamespace:
@@ -145,36 +161,59 @@ def build_split(
         sample_id = str(sample.get("sample_id") or Path(sample.get("image_out", "")).stem)
         image_path = resolve_path(sample.get("image_out") or sample.get("single_fits") or "")
         mask_path = resolve_path(sample.get("mask_out") or "")
-        raw = center_crop(_read_input_image(image_path, fit_channel_mode), args.crop_size)
-        image = center_crop(_normalize_image(raw, image_norm), args.crop_size)
-        feature_image = make_feature_image(raw, image, args.channels)
-        target_heatmap = center_crop(_read_mask_image(mask_path), args.crop_size)
-        target_yx = heatmap_to_centroids(
-            target_heatmap,
-            threshold=args.target_threshold,
-            min_distance=args.min_distance,
-        )
-        result = generate_mask(raw, "daofind_like", daofind_args(args.sigma))
-        labels, keep = label_candidates(
-            result.centroids_yx,
-            target_yx,
-            positive_radius_px=args.positive_radius_px,
-            ignore_radius_px=args.ignore_radius_px,
-        )
-        centroids = result.centroids_yx[keep]
-        labels = labels[keep]
+        full_raw = _read_input_image(image_path, fit_channel_mode)
+        full_mask = _read_mask_image(mask_path)
 
-        pos_idx = np.flatnonzero(labels > 0.5)
-        neg_idx = np.flatnonzero(labels <= 0.5)
-        if split == "train" and len(neg_idx) > args.max_negatives_per_image:
-            neg_idx = rng.choice(neg_idx, size=args.max_negatives_per_image, replace=False)
-        chosen = np.concatenate([pos_idx, neg_idx])
-        if len(chosen):
-            rng.shuffle(chosen)
-            centroids = centroids[chosen]
-            labels = labels[chosen]
+        sample_patch_parts = []
+        sample_label_parts = []
+        sample_centroid_parts = []
+        target_total = 0
+        candidate_total = 0
+        positive_total = 0
+        negative_total = 0
+        origins = crop_origins(full_raw.shape, args.crop_size, args.crop_mode, args.crops_per_image, rng)
+        for crop_index, (y0, x0) in enumerate(origins):
+            raw = crop_at(full_raw, args.crop_size, y0, x0)
+            image = _normalize_image(raw, image_norm)
+            feature_image = make_feature_image(raw, image, args.channels)
+            target_heatmap = crop_at(full_mask, args.crop_size, y0, x0)
+            target_yx = heatmap_to_centroids(
+                target_heatmap,
+                threshold=args.target_threshold,
+                min_distance=args.min_distance,
+            )
+            result = generate_mask(raw, "daofind_like", daofind_args(args.sigma))
+            labels, keep = label_candidates(
+                result.centroids_yx,
+                target_yx,
+                positive_radius_px=args.positive_radius_px,
+                ignore_radius_px=args.ignore_radius_px,
+            )
+            centroids = result.centroids_yx[keep]
+            labels = labels[keep]
 
-        patches = extract_patches(feature_image, centroids, args.patch_size)
+            pos_idx = np.flatnonzero(labels > 0.5)
+            neg_idx = np.flatnonzero(labels <= 0.5)
+            if split == "train" and len(neg_idx) > args.max_negatives_per_image:
+                neg_idx = rng.choice(neg_idx, size=args.max_negatives_per_image, replace=False)
+            chosen = np.concatenate([pos_idx, neg_idx])
+            if len(chosen):
+                rng.shuffle(chosen)
+                centroids = centroids[chosen]
+                labels = labels[chosen]
+
+            patches = extract_patches(feature_image, centroids, args.patch_size)
+            sample_patch_parts.append(patches)
+            sample_label_parts.append(labels.astype(np.float32))
+            sample_centroid_parts.append(centroids.astype(np.float32))
+            target_total += int(len(target_yx))
+            candidate_total += int(len(result.centroids_yx))
+            positive_total += int(np.sum(labels > 0.5))
+            negative_total += int(np.sum(labels <= 0.5))
+
+        patches = np.concatenate(sample_patch_parts, axis=0)
+        labels = np.concatenate(sample_label_parts, axis=0)
+        centroids = np.concatenate(sample_centroid_parts, axis=0)
         patch_parts.append(patches)
         label_parts.append(labels.astype(np.float32))
         centroid_parts.append(centroids.astype(np.float32))
@@ -182,11 +221,12 @@ def build_split(
             {
                 "split": split,
                 "sample_id": sample_id,
-                "target_count": int(len(target_yx)),
-                "candidate_count": int(len(result.centroids_yx)),
+                "crop_count": int(len(origins)),
+                "target_count": target_total,
+                "candidate_count": candidate_total,
                 "kept_count": int(len(labels)),
-                "positive_count": int(np.sum(labels > 0.5)),
-                "negative_count": int(np.sum(labels <= 0.5)),
+                "positive_count": positive_total,
+                "negative_count": negative_total,
             }
         )
         print(f"[{split}] {index}/{len(rows)} {sample_id}: pos={meta_rows[-1]['positive_count']} neg={meta_rows[-1]['negative_count']}")
@@ -225,6 +265,8 @@ def main() -> None:
     metadata = {
         "sigma": args.sigma,
         "crop_size": args.crop_size,
+        "crop_mode": args.crop_mode,
+        "crops_per_image": args.crops_per_image,
         "patch_size": args.patch_size,
         "channels": args.channels,
         "positive_radius_px": args.positive_radius_px,
