@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--score-thresholds", default="0.2,0.3,0.4,0.5,0.6,0.7,0.8")
     parser.add_argument("--resume", type=Path, default=None, help="Checkpoint to continue training from.")
+    parser.add_argument("--log-interval", type=int, default=100, help="Print training progress every N batches. 0 disables batch logs.")
     return parser.parse_args()
 
 
@@ -112,7 +113,8 @@ def main() -> None:
         model.train()
         total_loss = 0.0
         total = 0
-        for patches, labels in loader:
+        total_batches = len(loader)
+        for batch_index, (patches, labels) in enumerate(loader, start=1):
             patches = patches.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
@@ -121,6 +123,17 @@ def main() -> None:
             optimizer.step()
             total_loss += float(loss.item()) * len(labels)
             total += len(labels)
+            if args.log_interval > 0 and (
+                batch_index == 1 or batch_index % args.log_interval == 0 or batch_index == total_batches
+            ):
+                running_loss = total_loss / max(total, 1)
+                percent = 100.0 * batch_index / max(total_batches, 1)
+                print(
+                    f"  train batch {batch_index}/{total_batches}"
+                    f" ({percent:.1f}%)"
+                    f" loss={running_loss:.4f}",
+                    flush=True,
+                )
         val_loss, rows = evaluate(model, val_x, val_y, thresholds, device, args.batch_size, criterion=criterion)
         best = max(rows, key=lambda row: row["f1"])
         train_loss = total_loss / max(total, 1)
