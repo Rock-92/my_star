@@ -16,6 +16,7 @@ from candidate_scorer.pipeline import (
     resolve_data_path,
     score_nms,
 )
+from candidate_scorer.probe_candidates import parse_sets
 
 
 class CandidateScorerV2Tests(unittest.TestCase):
@@ -46,6 +47,9 @@ class CandidateScorerV2Tests(unittest.TestCase):
         root = Path("/root/my_star/data_model")
         result = resolve_data_path(root, r"data\data_model\val\images\sample.fit")
         self.assertEqual(result, root / "val" / "images" / "sample.fit")
+
+    def test_probe_candidate_sets_parse(self) -> None:
+        self.assertEqual(parse_sets("log=log:3.2"), [("log", "log:3.2")])
 
     def test_center_channels_have_expected_shape(self) -> None:
         patches = np.zeros((2, 3, 31, 31), dtype=np.float32)

@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-threshold", type=float, default=0.5)
     parser.add_argument("--min-distance", type=float, default=3.0)
     parser.add_argument("--count", type=int, default=0)
+    parser.add_argument(
+        "--candidate-budgets",
+        default="0",
+        help="Comma-separated per-frame top-response limits. 0 keeps all candidates.",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("runs/candidate_probe"))
     return parser.parse_args()
 
@@ -54,9 +59,11 @@ def main() -> None:
     data_root = resolve_path(args.data_root)
     rows = select_rows(load_rows(data_root, args.split_reason), "", args.count)
     candidate_sets = parse_sets(args.candidate_sets)
+    budgets = [int(value.strip()) for value in args.candidate_budgets.split(",") if value.strip()]
     totals = {
-        name: {"pred_count": 0, "target_count": 0, "matched_count": 0, "seconds": 0.0}
+        (name, budget): {"pred_count": 0, "target_count": 0, "matched_count": 0, "seconds": 0.0}
         for name, _ in candidate_sets
+        for budget in budgets
     }
     per_sample = []
     for index, sample in enumerate(rows, start=1):
@@ -72,33 +79,45 @@ def main() -> None:
         sample_rows = []
         for name, methods in candidate_sets:
             started = time.perf_counter()
-            candidates = generate_candidates(raw, methods, args.dedup_radius_px).centroids_yx
+            candidate_set = generate_candidates(raw, methods, args.dedup_radius_px)
             elapsed = time.perf_counter() - started
-            metrics = detection_metrics(candidates, targets, radius_px=args.match_radius_px)
-            sample_rows.append({"name": name, "methods": methods, "seconds": elapsed, **metrics})
-            for key in ("pred_count", "target_count", "matched_count"):
-                totals[name][key] += int(metrics[key])
-            totals[name]["seconds"] += elapsed
+            response_order = np.argsort(-candidate_set.response)
+            for budget in budgets:
+                selected = response_order if budget <= 0 else response_order[:budget]
+                candidates = candidate_set.centroids_yx[selected]
+                metrics = detection_metrics(candidates, targets, radius_px=args.match_radius_px)
+                sample_rows.append({
+                    "name": name,
+                    "methods": methods,
+                    "candidate_budget": budget,
+                    "seconds": elapsed,
+                    **metrics,
+                })
+                for key in ("pred_count", "target_count", "matched_count"):
+                    totals[(name, budget)][key] += int(metrics[key])
+                totals[(name, budget)]["seconds"] += elapsed
         per_sample.append({"sample_id": sample["sample_id"], "results": sample_rows})
         print(f"[{index}/{len(rows)}] {sample['sample_id']}", flush=True)
 
     summary = []
     for name, methods in candidate_sets:
-        row = totals[name]
-        recall = row["matched_count"] / max(row["target_count"], 1)
-        precision = row["matched_count"] / max(row["pred_count"], 1)
-        oracle_f1 = 2 * recall / max(1 + recall, 1e-12)
-        summary.append({
-            "name": name,
-            "methods": methods,
-            "samples": len(rows),
-            **row,
-            "precision": precision,
-            "recall": recall,
-            "oracle_f1": oracle_f1,
-            "mean_candidates": row["pred_count"] / max(len(rows), 1),
-            "mean_seconds": row["seconds"] / max(len(rows), 1),
-        })
+        for budget in budgets:
+            row = totals[(name, budget)]
+            recall = row["matched_count"] / max(row["target_count"], 1)
+            precision = row["matched_count"] / max(row["pred_count"], 1)
+            oracle_f1 = 2 * recall / max(1 + recall, 1e-12)
+            summary.append({
+                "name": name,
+                "methods": methods,
+                "candidate_budget": budget,
+                "samples": len(rows),
+                **row,
+                "precision": precision,
+                "recall": recall,
+                "oracle_f1": oracle_f1,
+                "mean_candidates": row["pred_count"] / max(len(rows), 1),
+                "mean_seconds": row["seconds"] / max(len(rows), 1),
+            })
     out_dir = resolve_path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.json").write_text(
