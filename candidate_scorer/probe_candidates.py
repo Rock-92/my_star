@@ -38,6 +38,13 @@ def parse_args() -> argparse.Namespace:
         default="0",
         help="Comma-separated per-frame top-response limits. 0 keeps all candidates.",
     )
+    parser.add_argument(
+        "--candidate-budget-mode",
+        choices=("global", "tile"),
+        default="global",
+        help="Apply each budget globally per frame or independently per spatial tile.",
+    )
+    parser.add_argument("--budget-tile-size", type=int, default=512)
     parser.add_argument("--out-dir", type=Path, default=Path("runs/candidate_probe"))
     return parser.parse_args()
 
@@ -50,6 +57,31 @@ def parse_sets(text: str) -> list[tuple[str, str]]:
         name, methods = item.split("=", 1)
         sets.append((name.strip(), methods.strip()))
     return sets
+
+
+def select_by_budget(
+    centroids_yx: np.ndarray,
+    response: np.ndarray,
+    budget: int,
+    mode: str,
+    tile_size: int,
+) -> np.ndarray:
+    if budget <= 0 or budget >= len(response) and mode == "global":
+        return np.argsort(-response)
+    if mode == "global":
+        return np.argsort(-response)[:budget]
+    tile_size = max(1, int(tile_size))
+    tile_y = np.floor(centroids_yx[:, 0] / tile_size).astype(np.int64)
+    tile_x = np.floor(centroids_yx[:, 1] / tile_size).astype(np.int64)
+    tile_ids = np.column_stack((tile_y, tile_x))
+    selected = []
+    for tile in np.unique(tile_ids, axis=0):
+        indexes = np.flatnonzero(np.all(tile_ids == tile[None, :], axis=1))
+        local_order = indexes[np.argsort(-response[indexes])]
+        selected.append(local_order[:budget])
+    if not selected:
+        return np.empty((0,), dtype=np.int64)
+    return np.concatenate(selected)
 
 
 def main() -> None:
@@ -81,15 +113,22 @@ def main() -> None:
             started = time.perf_counter()
             candidate_set = generate_candidates(raw, methods, args.dedup_radius_px)
             elapsed = time.perf_counter() - started
-            response_order = np.argsort(-candidate_set.response)
             for budget in budgets:
-                selected = response_order if budget <= 0 else response_order[:budget]
+                selected = select_by_budget(
+                    candidate_set.centroids_yx,
+                    candidate_set.response,
+                    budget,
+                    args.candidate_budget_mode,
+                    args.budget_tile_size,
+                )
                 candidates = candidate_set.centroids_yx[selected]
                 metrics = detection_metrics(candidates, targets, radius_px=args.match_radius_px)
                 sample_rows.append({
                     "name": name,
                     "methods": methods,
                     "candidate_budget": budget,
+                    "candidate_budget_mode": args.candidate_budget_mode,
+                    "budget_tile_size": args.budget_tile_size,
                     "seconds": elapsed,
                     **metrics,
                 })
@@ -110,6 +149,8 @@ def main() -> None:
                 "name": name,
                 "methods": methods,
                 "candidate_budget": budget,
+                "candidate_budget_mode": args.candidate_budget_mode,
+                "budget_tile_size": args.budget_tile_size,
                 "samples": len(rows),
                 **row,
                 "precision": precision,

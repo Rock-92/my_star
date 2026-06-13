@@ -16,7 +16,7 @@ from candidate_scorer.pipeline import (
     resolve_data_path,
     score_nms,
 )
-from candidate_scorer.probe_candidates import parse_sets
+from candidate_scorer.probe_candidates import parse_sets, select_by_budget
 
 
 class CandidateScorerV2Tests(unittest.TestCase):
@@ -50,6 +50,15 @@ class CandidateScorerV2Tests(unittest.TestCase):
 
     def test_probe_candidate_sets_parse(self) -> None:
         self.assertEqual(parse_sets("log=log:3.2"), [("log", "log:3.2")])
+
+    def test_tile_budget_preserves_each_region(self) -> None:
+        points = np.asarray(
+            [[10.0, 10.0], [20.0, 20.0], [10.0, 600.0], [20.0, 620.0]],
+            dtype=np.float32,
+        )
+        response = np.asarray([4.0, 3.0, 2.0, 1.0], dtype=np.float32)
+        selected = select_by_budget(points, response, budget=1, mode="tile", tile_size=512)
+        self.assertEqual(set(selected.tolist()), {0, 2})
 
     def test_center_channels_have_expected_shape(self) -> None:
         patches = np.zeros((2, 3, 31, 31), dtype=np.float32)
