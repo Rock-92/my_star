@@ -66,7 +66,7 @@ class CandidateScorerV2Tests(unittest.TestCase):
 
     def test_shard_writer_round_trip(self) -> None:
         root = Path(__file__).resolve().parents[2] / "data" / f"test_shards_{uuid.uuid4().hex}"
-        root.mkdir()
+        root.mkdir(parents=True)
         try:
             writer = ShardWriter(root, "train", shard_size=10)
             arrays = {

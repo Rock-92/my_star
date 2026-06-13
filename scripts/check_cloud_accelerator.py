@@ -31,6 +31,21 @@ def main() -> None:
             }
             for index in range(torch.cuda.device_count())
         ]
+        try:
+            device = torch.device("cuda")
+            left = torch.randn(256, 256, device=device)
+            right = torch.randn(256, 256, device=device)
+            result = left @ right
+            report["cuda_tensor_smoke"] = {
+                "ok": True,
+                "device": str(result.device),
+                "mean": float(result.mean().cpu()),
+            }
+        except Exception as error:
+            report["cuda_tensor_smoke"] = {
+                "ok": False,
+                "error": f"{type(error).__name__}: {error}",
+            }
     for module_name in ("torch_npu", "torch_mlu", "torch_dipu", "torch_gcu"):
         try:
             module = __import__(module_name)
