@@ -39,8 +39,12 @@ class CandidateScorerV2Tests(unittest.TestCase):
 
     def test_candidate_method_parser_supports_log(self) -> None:
         self.assertEqual(
-            parse_candidate_methods("daofind:2.5,log:3.0"),
-            [("daofind_like", 2.5), ("multiscale_log", 3.0)],
+            parse_candidate_methods("daofind:2.5,log:3.0,alog:4.0"),
+            [
+                ("daofind_like", 2.5),
+                ("multiscale_log", 3.0),
+                ("adaptive_multiscale_log", 4.0),
+            ],
         )
 
     def test_manifest_data_model_path_is_rebased(self) -> None:

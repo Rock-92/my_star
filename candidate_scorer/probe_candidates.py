@@ -26,7 +26,8 @@ def parse_args() -> argparse.Namespace:
         "dao2p5=daofind:2.5;"
         "dao_multi=daofind:2.0,daofind:2.5,daofind:3.0;"
         "log=log:2.5;"
-        "mixed=daofind:2.0,daofind:2.5,sextractor:1.5,log:2.5"
+        "alog=alog:3.0;"
+        "mixed=daofind:2.0,daofind:2.5,sextractor:1.5,alog:3.0"
     ))
     parser.add_argument("--dedup-radius-px", type=float, default=2.5)
     parser.add_argument("--match-radius-px", type=float, default=4.0)

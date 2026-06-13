@@ -8,7 +8,7 @@ import numpy as np
 import scipy.ndimage as ndi
 from scipy.spatial import cKDTree
 
-from preprocessing.mask_generator import generate_mask, subtract_background
+from preprocessing.mask_generator import estimate_mesh_background, generate_mask, subtract_background
 from star_unet.evaluate import baseline_args
 
 
@@ -48,9 +48,17 @@ def parse_candidate_methods(text: str) -> list[tuple[str, float]]:
             "sex": "sextractor_like",
             "tetra3": "tetra3_like",
             "log": "multiscale_log",
+            "alog": "adaptive_multiscale_log",
+            "adaptive_log": "adaptive_multiscale_log",
         }
         method = aliases.get(name, name)
-        if method not in {"daofind_like", "sextractor_like", "tetra3_like", "multiscale_log"}:
+        if method not in {
+            "daofind_like",
+            "sextractor_like",
+            "tetra3_like",
+            "multiscale_log",
+            "adaptive_multiscale_log",
+        }:
             raise ValueError(f"unsupported candidate method: {name}")
         methods.append((method, float(value)))
     if not methods:
@@ -105,6 +113,32 @@ def _multiscale_log_candidates(raw: np.ndarray, threshold_sigma: float) -> tuple
     return centroids.reshape((-1, 2)), normalized
 
 
+def _adaptive_multiscale_log_candidates(
+    raw: np.ndarray,
+    threshold_sigma: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    residual = subtract_background(raw, "local_mean", 25)
+    responses = [
+        -ndi.gaussian_laplace(residual, sigma=scale) * (scale**2)
+        for scale in (0.9, 1.3, 1.8, 2.4)
+    ]
+    response = np.max(np.stack(responses, axis=0), axis=0).astype(np.float32)
+    background, noise = estimate_mesh_background(response, mesh_size=64, filter_size=3)
+    score = (response - background) / np.maximum(noise, 1e-6)
+    local_max = score == ndi.maximum_filter(score, size=5)
+    peaks = np.argwhere(local_max & (score > float(threshold_sigma)))
+    if len(peaks):
+        h, w = raw.shape
+        keep = (
+            (peaks[:, 0] >= 3) & (peaks[:, 0] < h - 3)
+            & (peaks[:, 1] >= 3) & (peaks[:, 1] < w - 3)
+        )
+        peaks = peaks[keep]
+    centroids = peaks.astype(np.float32) + 0.5
+    values = score[peaks[:, 0], peaks[:, 1]] if len(peaks) else np.empty((0,), dtype=np.float32)
+    return centroids.reshape((-1, 2)), values.astype(np.float32)
+
+
 def deduplicate_candidates(
     centroids_yx: np.ndarray,
     source_ids: np.ndarray,
@@ -153,6 +187,8 @@ def generate_candidates(raw: np.ndarray, methods_text: str, dedup_radius_px: flo
     for source_id, (method, sigma) in enumerate(methods):
         if method == "multiscale_log":
             centroids, response = _multiscale_log_candidates(raw, sigma)
+        elif method == "adaptive_multiscale_log":
+            centroids, response = _adaptive_multiscale_log_candidates(raw, sigma)
         else:
             result = generate_mask(raw, method, _method_args(sigma))
             centroids = np.asarray(result.centroids_yx, dtype=np.float32).reshape((-1, 2))
