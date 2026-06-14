@@ -195,6 +195,7 @@ def _eval_namespace(args: argparse.Namespace) -> argparse.Namespace:
         no_cache=False,
         bootstrap_samples=0,
         seed=args.seed,
+        score_mode="class_quality",
     )
 
 

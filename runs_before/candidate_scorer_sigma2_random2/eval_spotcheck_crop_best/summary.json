@@ -1,0 +1,93 @@
+[
+  {
+    "pred_count": 2698,
+    "target_count": 1289,
+    "matched_count": 724,
+    "false_count": 1974,
+    "missed_count": 565,
+    "samples": 5,
+    "method": "cnn_s2_t0.50",
+    "precision": 0.268346923647146,
+    "recall": 0.5616757176105508,
+    "f1": 0.3631803360923,
+    "false_rate": 0.7316530763528539
+  },
+  {
+    "pred_count": 1789,
+    "target_count": 1289,
+    "matched_count": 680,
+    "false_count": 1109,
+    "missed_count": 609,
+    "samples": 5,
+    "method": "cnn_s2_t0.60",
+    "precision": 0.3801006148686417,
+    "recall": 0.5275407292474786,
+    "f1": 0.44184535412605586,
+    "false_rate": 0.6198993851313583
+  },
+  {
+    "pred_count": 1244,
+    "target_count": 1289,
+    "matched_count": 637,
+    "false_count": 607,
+    "missed_count": 652,
+    "samples": 5,
+    "method": "cnn_s2_t0.70",
+    "precision": 0.5120578778135049,
+    "recall": 0.49418153607447635,
+    "f1": 0.5029609159099883,
+    "false_rate": 0.4879421221864952
+  },
+  {
+    "pred_count": 895,
+    "target_count": 1289,
+    "matched_count": 598,
+    "false_count": 297,
+    "missed_count": 691,
+    "samples": 5,
+    "method": "cnn_s2_t0.80",
+    "precision": 0.6681564245810055,
+    "recall": 0.46392552366175327,
+    "f1": 0.5476190476190476,
+    "false_rate": 0.3318435754189944
+  },
+  {
+    "pred_count": 663,
+    "target_count": 1289,
+    "matched_count": 552,
+    "false_count": 111,
+    "missed_count": 737,
+    "samples": 5,
+    "method": "cnn_s2_t0.90",
+    "precision": 0.832579185520362,
+    "recall": 0.42823894491854153,
+    "f1": 0.5655737704918032,
+    "false_rate": 0.167420814479638
+  },
+  {
+    "pred_count": 24133,
+    "target_count": 1289,
+    "matched_count": 1043,
+    "false_count": 23090,
+    "missed_count": 246,
+    "samples": 5,
+    "method": "daofind_s2_raw",
+    "precision": 0.04321882898935068,
+    "recall": 0.8091543832428238,
+    "f1": 0.08205491306742191,
+    "false_rate": 0.9567811710106493
+  },
+  {
+    "pred_count": 403,
+    "target_count": 1289,
+    "matched_count": 399,
+    "false_count": 4,
+    "missed_count": 890,
+    "samples": 5,
+    "method": "daofind_s5",
+    "precision": 0.9900744416873449,
+    "recall": 0.3095422808378588,
+    "f1": 0.4716312056737588,
+    "false_rate": 0.009925558312655087
+  }
+]

@@ -81,6 +81,12 @@ class CandidateScorerV2Tests(unittest.TestCase):
         self.assertEqual(tuple(output["quality_logit"].shape), (3,))
         self.assertEqual(tuple(output["offset_yx"].shape), (3, 2))
 
+    def test_class_probability_is_not_lowered_by_quality_mode_contract(self) -> None:
+        class_probability = torch.tensor([0.8])
+        quality = torch.tensor([0.25])
+        combined = class_probability * quality.sqrt()
+        self.assertGreater(float(class_probability), float(combined))
+
     def test_shard_writer_round_trip(self) -> None:
         root = Path(__file__).resolve().parents[2] / "data" / f"test_shards_{uuid.uuid4().hex}"
         root.mkdir(parents=True)
@@ -111,6 +117,12 @@ class CandidateScorerV2Tests(unittest.TestCase):
         result = _aggregate(samples, 0.5)
         self.assertAlmostEqual(float(result["macro_f1"]), 0.5)
         self.assertLess(float(result["micro_f1"]), 0.5)
+
+    def test_best_metric_enrichment_does_not_mutate_threshold_rows(self) -> None:
+        rows = [{"score_threshold": 0.5, "micro_f1": 0.6}]
+        best = dict(max(rows, key=lambda row: float(row["micro_f1"])))
+        best["groups"] = {"1": {"micro_f1": 0.6}}
+        self.assertNotIn("groups", rows[0])
 
 
 if __name__ == "__main__":

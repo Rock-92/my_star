@@ -128,6 +128,7 @@ def main() -> None:
             scores, _ = score_candidates(
                 models, raw, normalized, candidates.centroids_yx,
                 candidates.source_mask, candidates.response, args.batch_size, device,
+                score_mode="class_quality",
             )
             selected_parts = [np.flatnonzero(classes == 2)]
             for class_id, limit in ((1, args.hard_offcenter_per_crop), (0, args.hard_background_per_crop)):

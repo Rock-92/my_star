@@ -1,0 +1,54 @@
+[
+  {
+    "pred_count": 470,
+    "target_count": 69,
+    "matched_count": 45,
+    "false_count": 425,
+    "missed_count": 24,
+    "samples": 1,
+    "method": "cnn_s2.5_t0.20",
+    "precision": 0.09574468085106383,
+    "recall": 0.6521739130434783,
+    "f1": 0.16697588126159554,
+    "false_rate": 0.9042553191489362
+  },
+  {
+    "pred_count": 469,
+    "target_count": 69,
+    "matched_count": 45,
+    "false_count": 424,
+    "missed_count": 24,
+    "samples": 1,
+    "method": "cnn_s2.5_t0.50",
+    "precision": 0.09594882729211088,
+    "recall": 0.6521739130434783,
+    "f1": 0.16728624535315986,
+    "false_rate": 0.9040511727078892
+  },
+  {
+    "pred_count": 470,
+    "target_count": 69,
+    "matched_count": 45,
+    "false_count": 425,
+    "missed_count": 24,
+    "samples": 1,
+    "method": "daofind_s2.5_raw",
+    "precision": 0.09574468085106383,
+    "recall": 0.6521739130434783,
+    "f1": 0.16697588126159554,
+    "false_rate": 0.9042553191489362
+  },
+  {
+    "pred_count": 14,
+    "target_count": 69,
+    "matched_count": 14,
+    "false_count": 0,
+    "missed_count": 55,
+    "samples": 1,
+    "method": "daofind_s5",
+    "precision": 1.0,
+    "recall": 0.2028985507246377,
+    "f1": 0.3373493975903615,
+    "false_rate": 0.0
+  }
+]

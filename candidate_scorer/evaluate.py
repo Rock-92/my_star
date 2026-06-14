@@ -46,6 +46,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--score-thresholds", default="0.05:0.95:0.01")
     parser.add_argument("--fixed-threshold", type=float, default=None)
     parser.add_argument("--nms-radius-px", type=float, default=3.5)
+    parser.add_argument(
+        "--score-mode",
+        choices=("class", "class_quality", "quality"),
+        default="class_quality",
+        help="Candidate score used for thresholding.",
+    )
     parser.add_argument("--target-threshold", type=float, default=0.5)
     parser.add_argument("--min-distance", type=float, default=3.0)
     parser.add_argument("--match-radius-px", type=float, default=4.0)
@@ -166,6 +172,7 @@ def score_candidates(
     response: np.ndarray,
     batch_size: int,
     device: torch.device,
+    score_mode: str = "class_quality",
 ) -> tuple[np.ndarray, np.ndarray]:
     if not len(centroids_yx):
         return np.empty((0,), dtype=np.float32), np.empty((0, 2), dtype=np.float32)
@@ -201,7 +208,15 @@ def score_candidates(
                 )
                 class_prob = torch.softmax(output["class_logits"], dim=1)[:, 2]
                 quality = torch.sigmoid(output["quality_logit"])
-                model_scores.append((class_prob * quality.sqrt()).cpu().numpy())
+                if score_mode == "class":
+                    score = class_prob
+                elif score_mode == "quality":
+                    score = quality
+                elif score_mode == "class_quality":
+                    score = class_prob * quality.sqrt()
+                else:
+                    raise ValueError(f"unsupported score mode: {score_mode}")
+                model_scores.append(score.cpu().numpy())
                 model_offsets.append(output["offset_yx"].cpu().numpy())
         scores_by_model.append(np.concatenate(model_scores))
         offsets_by_model.append(np.concatenate(model_offsets))
@@ -294,7 +309,8 @@ def evaluate_models(
             cache_dir, not args.no_cache, args.target_threshold, args.min_distance,
         )
         scores, offsets = score_candidates(
-            models, raw, normalized, centroids, source_mask, response, args.batch_size, device
+            models, raw, normalized, centroids, source_mask, response, args.batch_size,
+            device, args.score_mode,
         )
         corrected = centroids + offsets
         threshold_rows = {}
@@ -328,7 +344,7 @@ def evaluate_models(
             flush=True,
         )
     summary_rows = [_aggregate(per_sample, threshold) for threshold in thresholds]
-    best = max(summary_rows, key=lambda row: float(row["micro_f1"]))
+    best = dict(max(summary_rows, key=lambda row: float(row["micro_f1"])))
     best_threshold = float(best["score_threshold"])
     best["micro_f1_ci95"] = _bootstrap_ci(per_sample, best_threshold, args.bootstrap_samples, args.seed)
     best["candidate_oracle_recall"] = (
@@ -337,6 +353,7 @@ def evaluate_models(
     )
     best["mean_candidates"] = float(np.mean([row["candidate_count"] for row in per_sample]))
     best["mean_seconds"] = float(np.mean([row["elapsed_seconds"] for row in per_sample]))
+    best["score_mode"] = args.score_mode
     group_rows = {}
     for group in sorted({str(row["group"]) for row in per_sample}):
         selected = [row for row in per_sample if str(row["group"]) == group]
