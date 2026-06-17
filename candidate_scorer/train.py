@@ -36,8 +36,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--model-width", type=int, default=24)
     parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument(
+        "--class-weights",
+        default="1,1,1",
+        help="Comma-separated CE weights for classes: background, off-center, true-center.",
+    )
     parser.add_argument("--quality-loss-weight", type=float, default=0.5)
     parser.add_argument("--offset-loss-weight", type=float, default=0.25)
+    parser.add_argument(
+        "--score-mode",
+        choices=("class", "class_quality", "quality"),
+        default="class_quality",
+        help="Score used during fixed full-frame coordinate evaluation and best checkpoint selection.",
+    )
+    parser.add_argument(
+        "--recall-first",
+        action="store_true",
+        help="Use a conservative recall-oriented preset for the final scorer experiment.",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--resume", type=Path, default=None)
@@ -52,6 +68,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval-batch-size", type=int, default=2048)
     parser.add_argument("--candidate-cache-dir", type=Path, default=Path("data/candidate_cache"))
     return parser.parse_args()
+
+
+def apply_recall_first_preset(args: argparse.Namespace) -> None:
+    """Bias the existing scorer toward recall without changing the architecture."""
+    if not args.recall_first:
+        return
+    if args.class_weights == "1,1,1":
+        args.class_weights = "0.8,1.0,2.5"
+    if args.quality_loss_weight == 0.5:
+        args.quality_loss_weight = 0.05
+    if args.offset_loss_weight == 0.25:
+        args.offset_loss_weight = 0.05
+    if args.focal_gamma == 2.0:
+        args.focal_gamma = 1.0
+    if args.score_mode == "class_quality":
+        args.score_mode = "class"
+
+
+def parse_class_weights(text: str, device: torch.device) -> torch.Tensor:
+    values = [float(value.strip()) for value in str(text).split(",") if value.strip()]
+    if len(values) != 3:
+        raise ValueError("--class-weights must contain exactly 3 comma-separated values")
+    if any(value <= 0 for value in values):
+        raise ValueError("--class-weights must be positive")
+    return torch.tensor(values, dtype=torch.float32, device=device)
 
 
 class BalancedShardDataset(IterableDataset):
@@ -124,8 +165,13 @@ class BalancedShardDataset(IterableDataset):
                 )
 
 
-def focal_cross_entropy(logits: torch.Tensor, targets: torch.Tensor, gamma: float) -> torch.Tensor:
-    ce = F.cross_entropy(logits, targets, reduction="none")
+def focal_cross_entropy(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    gamma: float,
+    class_weights: torch.Tensor | None = None,
+) -> torch.Tensor:
+    ce = F.cross_entropy(logits, targets, weight=class_weights, reduction="none")
     probability = torch.softmax(logits, dim=1).gather(1, targets[:, None]).squeeze(1)
     return (((1.0 - probability) ** gamma) * ce).mean()
 
@@ -136,8 +182,9 @@ def compute_loss(
     quality: torch.Tensor,
     offsets: torch.Tensor,
     args: argparse.Namespace,
+    class_weights: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, dict[str, float]]:
-    class_loss = focal_cross_entropy(output["class_logits"], classes, args.focal_gamma)
+    class_loss = focal_cross_entropy(output["class_logits"], classes, args.focal_gamma, class_weights)
     quality_loss = F.binary_cross_entropy_with_logits(output["quality_logit"], quality)
     positive = classes == 2
     if torch.any(positive):
@@ -162,6 +209,7 @@ def validation_loss(
     batch_size: int,
     device: torch.device,
     args: argparse.Namespace,
+    class_weights: torch.Tensor | None = None,
 ) -> float:
     loader = DataLoader(
         dataset,
@@ -176,7 +224,7 @@ def validation_loss(
         for small, large, numeric, classes, quality, offsets in loader:
             small, large, numeric = small.to(device), large.to(device), numeric.to(device)
             classes, quality, offsets = classes.to(device), quality.to(device), offsets.to(device)
-            loss, _ = compute_loss(model(small, large, numeric), classes, quality, offsets, args)
+            loss, _ = compute_loss(model(small, large, numeric), classes, quality, offsets, args, class_weights)
             total_loss += float(loss) * len(classes)
             count += len(classes)
     return total_loss / max(count, 1)
@@ -195,12 +243,13 @@ def _eval_namespace(args: argparse.Namespace) -> argparse.Namespace:
         no_cache=False,
         bootstrap_samples=0,
         seed=args.seed,
-        score_mode="class_quality",
+        score_mode=args.score_mode,
     )
 
 
 def main() -> None:
     args = parse_args()
+    apply_recall_first_preset(args)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     data_dir = resolve_path(args.data_dir)
@@ -229,6 +278,7 @@ def main() -> None:
         pin_memory=torch.cuda.is_available(),
     )
     device = resolve_device(args.device)
+    class_weights = parse_class_weights(args.class_weights, device)
     model = CenterAwareScorer(
         input_channels=int(metadata["input_channels"]),
         feature_dim=int(metadata["numeric_feature_dim"]),
@@ -271,7 +321,9 @@ def main() -> None:
             offsets = offsets.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=scaler.is_enabled()):
-                loss, parts = compute_loss(model(small, large, numeric), classes, quality, offsets, args)
+                loss, parts = compute_loss(
+                    model(small, large, numeric), classes, quality, offsets, args, class_weights
+                )
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -285,7 +337,7 @@ def main() -> None:
                     flush=True,
                 )
         scheduler.step()
-        val_loss = validation_loss(model, val_dataset, args.batch_size, device, args)
+        val_loss = validation_loss(model, val_dataset, args.batch_size, device, args, class_weights)
         checkpoint = {
             "schema_version": int(metadata["schema_version"]),
             "model_type": "center_aware_v2",
@@ -303,6 +355,14 @@ def main() -> None:
             "train_loss": total_loss / max(total, 1),
             "val_loss": val_loss,
             "best_coord_f1": best_f1,
+            "training_args": {
+                "recall_first": bool(args.recall_first),
+                "score_mode": args.score_mode,
+                "class_weights": args.class_weights,
+                "focal_gamma": float(args.focal_gamma),
+                "quality_loss_weight": float(args.quality_loss_weight),
+                "offset_loss_weight": float(args.offset_loss_weight),
+            },
         }
         coord_best = None
         if args.coord_eval_interval > 0 and epoch % args.coord_eval_interval == 0:
