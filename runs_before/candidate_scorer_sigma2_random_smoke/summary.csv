@@ -1,2 +1,0 @@
-score_threshold,precision,recall,f1,pred_count,target_count,matched_count,false_count,missed_count,epoch,train_loss,val_loss
-0.5,0.062360801781737196,0.4375,0.1091617933723197,898,128,56,842,72,1,1.2521890960994373,1.0332437377158694

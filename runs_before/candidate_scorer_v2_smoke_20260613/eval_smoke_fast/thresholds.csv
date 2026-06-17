@@ -1,3 +1,0 @@
-score_threshold,pred_count,target_count,matched_count,false_count,missed_count,precision,recall,micro_f1,macro_f1,micro_f1_ci95,candidate_oracle_recall,mean_candidates,mean_seconds,edge_metrics,groups
-0.3,0,2067,0,0,2067,0.0,0.0,0.0,0.0,"[0.0, 0.0]",0.27382680212868893,593.0,5.3623575,"{'score_threshold': 0.3, 'pred_count': 0, 'target_count': 298, 'matched_count': 0, 'false_count': 0, 'missed_count': 298, 'precision': 0.0, 'recall': 0.0, 'micro_f1': 0.0, 'macro_f1': 0.0}","{'1': {'score_threshold': 0.3, 'pred_count': 0, 'target_count': 2067, 'matched_count': 0, 'false_count': 0, 'missed_count': 2067, 'precision': 0.0, 'recall': 0.0, 'micro_f1': 0.0, 'macro_f1': 0.0}}"
-0.5,0,2067,0,0,2067,0.0,0.0,0.0,0.0,,,,,,

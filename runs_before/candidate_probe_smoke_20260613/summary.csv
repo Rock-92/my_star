@@ -1,2 +1,0 @@
-name,methods,samples,pred_count,target_count,matched_count,seconds,precision,recall,oracle_f1,mean_candidates,mean_seconds
-dao5,daofind:5.0,1,593,2067,566,1.5434919999999996,0.954468802698145,0.27382680212868893,0.42992783896695785,593.0,1.5434919999999996

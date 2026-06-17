@@ -14,3 +14,4 @@ __pycache__/
 
 # Training checkpoints/logs
 runs/
+runs_before/

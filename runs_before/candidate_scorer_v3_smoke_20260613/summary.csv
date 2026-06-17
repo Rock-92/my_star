@@ -1,2 +1,0 @@
-epoch,train_loss,val_loss,micro_f1,macro_f1,precision,recall,score_threshold
-1,0.8210140347480774,0.9977629894067434,,,,,
