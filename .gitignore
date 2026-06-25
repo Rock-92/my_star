@@ -31,3 +31,9 @@ single_star_test/*/results/*
 !single_star_test/*/results/README.md
 single_star_test/make_star/gaia.csv
 single_star_test/preprocessing/gaia_data/
+
+# Auxiliary files moved outside the experiment archive
+project_auxiliary/analysis_outputs/
+project_auxiliary/test_image/
+project_auxiliary/make_star/gaia.csv
+project_auxiliary/preprocessing/gaia_data/
