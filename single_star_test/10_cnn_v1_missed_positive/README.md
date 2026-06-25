@@ -1,4 +1,4 @@
-﻿# 09 CNN V1 Missed-Positive Specialization
+﻿# 10 CNN V1 Missed-Positive Specialization
 
 ## 目的
 
@@ -11,3 +11,4 @@
 ## 状态
 
 脚本已准备好，结果目录 `results/simple_cnn_missed_sigma2p5_seed42` 用于保存输出。
+

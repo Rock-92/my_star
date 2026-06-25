@@ -5,7 +5,7 @@
 1. `data/`：主数据集和候选 patch 数据集。
 2. `preprocessing/`：数据预处理、`data_model` 生成和传统星点检测工具。
 3. `data_analysis/`：早期数据质量扫描、FITS/JPG 对比和 stack mask 调试输出。
-4. `00_...` 到 `09_...`：按时间和路线拆分的主要训练或实验尝试。
+4. `00_...` 到 `10_...`：按时间和路线拆分的主要训练或实验尝试。
 
 模拟生成、论文资料、测试图片、tetra3 辅助库等非训练归档内容保留在目录外的 `../project_auxiliary/`。
 
@@ -20,7 +20,8 @@
 - `06_candidate_generation_probe/`：DAOFIND、LoG、adaptive LoG 候选生成上限分析。
 - `07_cnn_v3_center_aware/`：V3 双尺度 center-aware scorer。
 - `08_cnn_v3_recall_first/`：V3 recall-first 训练尝试。
-- `09_cnn_v1_missed_positive/`：最后一次 simple CNN missed-positive 特化训练。
+- `09_cnn_v1_optimized_pipeline/`：用优化后的 shard/resume 数据管线重训 01 simple CNN。
+- `10_cnn_v1_missed_positive/`：simple CNN missed-positive 特化训练。
 
 ## 当前结论
 
