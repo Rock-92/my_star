@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-ids", default="")
     parser.add_argument(
         "--methods",
-        default="daofind5=daofind:5.0,daofind4p5=daofind:4.5,log3p2=log:3.2,alog3p2=alog:3.2",
+        default="daofind5=daofind:5.0,daofind4p5=daofind:4.5,daofind4p0=daofind:4.0,log3p2=log:3.2,alog3p2=alog:3.2",
         help="Comma-separated name=method:sigma entries.",
     )
     parser.add_argument("--cnn-checkpoint", type=Path, default=None)
