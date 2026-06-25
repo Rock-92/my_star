@@ -16,3 +16,18 @@ __pycache__/
 runs/
 runs_before/
 result/
+
+# Organized local experiment artifacts
+single_star_test/data/*
+!single_star_test/data/README.md
+!single_star_test/data/*/
+!single_star_test/data/*/README.md
+single_star_test/runs/
+single_star_test/runs_before/
+single_star_test/result/
+single_star_test/analysis_outputs/
+single_star_test/test_image/
+single_star_test/*/results/*
+!single_star_test/*/results/README.md
+single_star_test/make_star/gaia.csv
+single_star_test/preprocessing/gaia_data/

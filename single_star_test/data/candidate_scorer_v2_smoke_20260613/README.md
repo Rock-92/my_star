@@ -1,0 +1,22 @@
+# ????candidate_scorer_v2_smoke_20260613
+
+- ????6
+- ???? 7.35 MB
+
+## ??
+
+V2 smoke ???????? shard/resume?center-aware scorer ???????/?????
+
+## ??/????
+
+- schema_version: 2
+- candidate_methods: daofind:2.5
+- patch_size: 31
+- context_patch_size: 63
+- input_channels: 6
+- numeric_feature_dim: 16
+- train_split_reason: train
+- val_split_reason: frame_holdout
+- train_shards: 1
+- val_shards: 1
+- samples.csv ???2
