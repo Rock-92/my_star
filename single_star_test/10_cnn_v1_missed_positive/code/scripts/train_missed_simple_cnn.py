@@ -102,6 +102,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-threshold", type=float, default=None)
     parser.add_argument("--sample-ids", default="", help="Optional comma-separated override for eval sample ids.")
     parser.add_argument("--max-positives", type=int, default=20000)
+    parser.add_argument(
+        "--fixed-positive-count",
+        type=int,
+        default=0,
+        help="If >0, train on exactly this many missed-positive patches sampled once before training.",
+    )
+    parser.add_argument(
+        "--fixed-negative-count",
+        type=int,
+        default=0,
+        help="If >0, train on exactly this many negative patches sampled once before training.",
+    )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch-size", type=int, default=512)
     parser.add_argument("--eval-batch-size", type=int, default=4096)
@@ -266,17 +278,38 @@ def sample_training_arrays(
         [frame.patches[frame.negative_index] for frame in frames if len(frame.negative_index)],
         axis=0,
     )
-    if len(positives) > int(args.max_positives):
-        positives = positives[rng.choice(len(positives), size=int(args.max_positives), replace=False)]
-    neg_count = min(len(negatives), len(positives))
-    negatives = negatives[rng.choice(len(negatives), size=neg_count, replace=False)]
+    fixed_positive_count = int(args.fixed_positive_count)
+    fixed_negative_count = int(args.fixed_negative_count)
+    if fixed_positive_count < 0 or fixed_negative_count < 0:
+        raise ValueError("--fixed-positive-count and --fixed-negative-count must be >= 0")
+    if fixed_positive_count or fixed_negative_count:
+        pos_count = fixed_positive_count or min(len(positives), int(args.max_positives))
+        neg_count = fixed_negative_count or pos_count
+        if len(positives) < pos_count or len(negatives) < neg_count:
+            raise RuntimeError(
+                "not enough samples for fixed training set: "
+                f"need positives={pos_count}, negatives={neg_count}; "
+                f"have positives={len(positives)}, negatives={len(negatives)}"
+            )
+        positives = positives[rng.choice(len(positives), size=pos_count, replace=False)]
+        negatives = negatives[rng.choice(len(negatives), size=neg_count, replace=False)]
+    else:
+        if len(positives) > int(args.max_positives):
+            positives = positives[rng.choice(len(positives), size=int(args.max_positives), replace=False)]
+        neg_count = min(len(negatives), len(positives))
+        negatives = negatives[rng.choice(len(negatives), size=neg_count, replace=False)]
     patches = np.concatenate([positives, negatives], axis=0)
     labels = np.concatenate([
         np.ones(len(positives), dtype=np.float32),
         np.zeros(len(negatives), dtype=np.float32),
     ])
     order = rng.permutation(len(labels))
-    return patches[order], labels[order], {"positives": int(len(positives)), "negatives": int(len(negatives))}
+    return patches[order], labels[order], {
+        "positives": int(len(positives)),
+        "negatives": int(len(negatives)),
+        "fixed_positive_count": fixed_positive_count,
+        "fixed_negative_count": fixed_negative_count,
+    }
 
 
 def evaluate_frames(
