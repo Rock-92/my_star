@@ -1,49 +1,86 @@
-﻿# 数据目录总览
+# 数据目录说明
 
-这个目录保存单帧星点提取实验用到的正式数据、中间候选数据和少量缓存。核心标签来源是 `data_model` 里的叠加图/stack mask 生成标签，不是单帧 DAOFIND 自标注。
+这个目录保存单帧星点提取实验用到的数据。请按“数据来源 -> 标注数据集 -> 候选 patch 数据集 -> 缓存”的顺序理解它，而不是按文件夹名字字母顺序理解。
 
-## 数据划分原则
+核心标签来源是 `data_model/` 里的叠加图/stack mask 标签。DAOFIND/LoG 等传统方法只负责生成候选点，不作为最终真值标签。
 
-`data_model/manifest.csv` 中通过 `split_reason` 区分用途：
+## 1. 外部参考数据：`data_ZTF/`
 
-- `train`：646 张，用于训练候选 scorer 或密集模型。
-- `frame_holdout`：58 张，用于开发集评估、选模型、选全局阈值。
-- `coord_holdout`：66 张，最终测试集；方案定型前不参与调参。
+`data_ZTF/` 是早期用于理解天文图像、星点分布和外部参考流程的数据目录。它不是当前 CNN scorer 的直接训练输入。
 
-## 子目录说明
+它的作用主要是：
 
-### `data_model/`
-主数据集，约 770 张样本。由 `single_star_test/preprocessing/model_data_processing.py` 从原始 S30Pro 单帧、叠加图和 stack mask 生成。
+- 作为早期星点检测、图像读取和可视化流程的参考数据。
+- 帮助验证 FITS/JPG 读取、背景估计、星点候选提取等基础工具。
+- 和当前 S30Pro 主线没有严格的一一对应关系。
 
-用途：
+当前 F1 评估、候选生成和训练主线都不依赖 `data_ZTF/`。
 
-- U-Net heatmap 路线的 image/mask 数据源。
-- CNN 候选 scorer 的真实星点标签来源。
-- `candidate_scorer.evaluate` 和 `candidate_scorer.probe_candidates` 的整图评估来源。
+## 2. 原始观测数据：`data_S30Pro/`
+
+`data_S30Pro/` 是当前项目的主要上游数据。它保存 S30Pro 拍摄得到的单帧图像、对应叠加图，以及 stack mask 生成所需的相关文件。
+
+典型组织方式是按观测组存放：
+
+- 叠加图目录：包含 `Stacked_*.fit` 等叠加结果。
+- 单帧目录：通常是同名目录加 `_sub`，包含该组单帧 `*.fit`。
+- 部分组可能同时包含 JPG、预览图或中间文件。
+
+这份数据本身还不是训练数据。它需要经过 `single_star_test/preprocessing/model_data_processing.py` 处理，才能变成模型统一读取的 `data_model/`。
+
+## 3. 主模型数据：`data_model/`
+
+`data_model/` 是由 `data_S30Pro/` 生成的正式训练/评估数据集，也是后续 U-Net、CNN V1、CNN V3 的共同标签来源。
+
+生成脚本：
+
+```bash
+python single_star_test/preprocessing/model_data_processing.py \
+  --root single_star_test/data/data_S30Pro \
+  --output single_star_test/data/data_model
+```
+
+生成逻辑：
+
+1. 遍历 `data_S30Pro/` 中每个观测组。
+2. 找到该组叠加图 `Stacked_*.fit` 和对应 `_sub` 单帧。
+3. 从叠加图/stack mask 提取星点标签。
+4. 将叠加图标签对齐到每张单帧。
+5. 输出标准化后的 image/mask 文件和 `manifest.csv`。
 
 典型结构：
 
-- `train/images`、`train/masks`
-- `val/images`、`val/masks`
-- `manifest.csv`
+- `train/images/`：训练物理目录下的单帧图像。
+- `train/masks/`：对应 heatmap/mask 标签。
+- `val/images/`：验证物理目录下的单帧图像。
+- `val/masks/`：对应 heatmap/mask 标签。
+- `stack_masks/`：从叠加图生成或保存的 stack-level mask。
+- `manifest.csv`：每张单帧的路径、组号、标签对齐信息和真实 split。
+- `summary.json`：生成统计。
 
-注意：历史脚本里 `train/val` 是物理目录名，真正实验划分以 `manifest.csv` 的 `split_reason` 为准。
+重要：历史脚本中有 `train/val` 物理目录，但真正实验划分以 `manifest.csv` 的 `split_reason` 为准：
 
-### `candidate_scorer_sigma2p5_full/`
-早期 simple CNN V1 使用的主要候选 patch 数据集。
+- `train`：646 张，用于训练。
+- `frame_holdout`：58 张，用于开发集评估、选模型、选阈值。
+- `coord_holdout`：66 张，最终测试集；方案定型前不参与调参。
+
+## 4. 早期候选 patch 数据：`candidate_scorer_sigma2p5_full/`
+
+这是 simple CNN V1 的主要训练数据，来自 `data_model/`。
+
+生成目的：验证“低阈值 DAOFIND 候选 + 31x31 patch CNN 打分”是否能超过默认 DAOFIND。
 
 关键配置：
 
 - 候选生成：DAOFIND-like，`sigma=2.5`
-- crop：中心/固定 `1024x1024`
+- crop：固定/中心 `1024x1024`
 - patch：`31x31`，单通道
-- 正样本半径：`4 px`
-- ignore 半径：`6 px`
-- 每图最多保留约 `800` 个负样本
-- train：`625758` patches，其中正样本 `108958`，负样本 `516800`
-- val：`244013` patches，其中正样本 `21752`，负样本 `222261`
-
-生成目的：验证“低阈值候选 + simple CNN 打分”是否优于默认 DAOFIND。结果证明整图 F1 从约 `0.435` 提升到约 `0.50~0.51`，是后续路线的起点。
+- 正样本：候选点距离 stack 标签星点 `<= 4 px`
+- ignore：距离 `4~6 px`
+- 负样本：距离 `>= 6 px`
+- 每图最多负样本：约 `800`
+- train：`625758` patches，正样本 `108958`，负样本 `516800`
+- val：`244013` patches，正样本 `21752`，负样本 `222261`
 
 近似生成命令：
 
@@ -53,11 +90,16 @@ python -m candidate_scorer.build_dataset \
   --crop-size 1024 \
   --patch-size 31 \
   --max-negatives-per-image 800 \
-  --out-dir data/candidate_scorer_sigma2p5_full
+  --out-dir single_star_test/data/candidate_scorer_sigma2p5_full
 ```
 
-### `candidate_scorer_sigma2_random_smoke/`
-`sigma=2.0` 随机 crop 小样本冒烟数据。
+实验结论：整图 spotcheck F1 从默认 DAOFIND 的约 `0.435` 提升到约 `0.50~0.51`，是目前最有效的简单基线。
+
+## 5. 更低阈值候选冒烟数据：`candidate_scorer_sigma2_random_smoke/`
+
+这是 `sigma=2.0` 路线的小样本 smoke 数据，来自 `data_model/`。
+
+生成目的：先确认更低阈值、随机 crop 和训练读取流程能跑通，再决定是否生成大数据。
 
 关键配置：
 
@@ -67,23 +109,22 @@ python -m candidate_scorer.build_dataset \
 - train：`3409` patches，正样本 `209`，负样本 `3200`
 - val：`2297` patches，正样本 `87`，负样本 `2210`
 
-生成目的：先用很小数据确认 `sigma=2.0`、random crop 和训练管线能跑通，再决定是否生成全量。
+## 6. 更低阈值候选全量数据：`candidate_scorer_sigma2_random2/`
 
-### `candidate_scorer_sigma2_random2/`
-`sigma=2.0` 全量 random crop 数据集。
+这是 `sigma=2.0` 的全量 random crop 数据，来自 `data_model/`。
+
+生成目的：提高候选召回上限，观察 scorer 能否从更多候选里找回漏检真星点。
 
 关键配置：
 
 - 候选生成：DAOFIND-like，`sigma=2.0`
 - crop：random `1024x1024`
-- 每张图 `2` 个随机 crop
+- 每张图：`2` 个随机 crop
 - patch：`31x31`，单通道
 - 正样本半径：`4 px`
 - ignore 半径：`6 px`
-- train：`1285989` patches，其中正样本 `252389`，负样本 `1033600`
-- val：`1184236` patches，其中正样本 `50449`，负样本 `1133787`
-
-生成目的：提高候选召回上限。实验结论是 raw candidate recall 上升，但假阳性数量过大，CNN 筛选后整图 F1 仍约 `0.50~0.51`，没有突破。
+- train：`1285989` patches，正样本 `252389`，负样本 `1033600`
+- val：`1184236` patches，正样本 `50449`，负样本 `1133787`
 
 近似生成命令：
 
@@ -95,39 +136,43 @@ python -m candidate_scorer.build_dataset \
   --crop-mode random \
   --crops-per-image 2 \
   --max-negatives-per-image 800 \
-  --out-dir data/candidate_scorer_sigma2_random2
+  --out-dir single_star_test/data/candidate_scorer_sigma2_random2
 ```
 
-### `candidate_scorer_sigma2p5_num_smoke/`
-`sigma=2.5 + numeric features` 小样本冒烟数据。
+实验结论：候选 oracle recall 明显提高，但候选假阳性太多，CNN 筛选后整图 F1 仍约 `0.50~0.51`。
+
+## 7. 数值特征冒烟数据：`candidate_scorer_sigma2p5_num_smoke/`
+
+这是 `sigma=2.5 + numeric features` 的小样本 smoke 数据，来自 `data_model/`。
+
+生成目的：验证候选数值特征保存、归一化和训练读取逻辑。
 
 关键配置：
 
 - 候选生成：DAOFIND-like，`sigma=2.5`
 - crop：random `512x512`
-- 每张图 `1` 个 crop
+- 每张图：`1` 个 crop
 - patch：`31x31`，单通道
-- numeric features：10 维，包括中心亮度、背景残差、matched response、局部均值/方差、SNR、归一化坐标、边缘距离等
+- numeric features：10 维，包括中心亮度、背景残差、matched response、局部均值/方差、SNR、归一化坐标、边缘距离
 - train：`1012` patches，正样本 `69`，负样本 `943`
 - val：`476` patches，正样本 `42`，负样本 `434`
 
-生成目的：验证数值特征融合的数据保存、归一化和训练读取逻辑。
+## 8. unique_soft 计划数据：`candidate_scorer_sigma2p5_num_unique_soft_random2/`
 
-### `candidate_scorer_sigma2p5_num_unique_soft_random2/`
-计划中的 `sigma=2.5 + numeric features + unique_soft + random crop x2` 数据目录。
+这是计划中的 `sigma=2.5 + numeric features + unique_soft + random crop x2` 数据目录。
+
+计划生成目的：减少顺序相关的伪标签噪声，让每个标签星点最多只分配一个正候选，其余近邻候选设为 ignore。
 
 计划配置：
 
 - 候选生成：DAOFIND-like，`sigma=2.5`
 - crop：random `1024x1024`
-- 每张图 `2` 个 crop
+- 每张图：`2` 个 crop
 - patch：`31x31`，单通道
 - numeric features：10 维
-- 标签模式：`unique_soft`
+- label mode：`unique_soft`
 - soft label sigma：`2.0 px`
-- 每个标签星点最多分配一个候选为正样本，其余近邻候选 ignore
-
-注意：当前本地目录几乎为空，仅保留占位 README，说明这份全量数据没有完整归档到本机。
+- max negatives per image：`800`
 
 对应命令：
 
@@ -143,11 +188,16 @@ python -m candidate_scorer.build_dataset \
   --max-negatives-per-image 800 \
   --label-mode unique_soft \
   --soft-label-sigma-px 2.0 \
-  --out-dir data/candidate_scorer_sigma2p5_num_unique_soft_random2
+  --out-dir single_star_test/data/candidate_scorer_sigma2p5_num_unique_soft_random2
 ```
 
-### `candidate_scorer_v2_smoke_20260613/`
-V2/V3 数据管线冒烟数据，采用 shard/resume 格式。
+注意：当前本地目录为空，占位保留是为了记录这条路线；完整数据没有归档到本机。
+
+## 9. V2 shard/resume 冒烟数据：`candidate_scorer_v2_smoke_20260613/`
+
+这是新版数据构建管线的 smoke 数据，来自 `data_model/`。
+
+生成目的：验证 shard/resume、配置指纹、双尺度输入和候选元数据保存。
 
 关键配置：
 
@@ -157,14 +207,16 @@ V2/V3 数据管线冒烟数据，采用 shard/resume 格式。
 - patch：中心 `31x31` + 上下文 `63x63`
 - 输入通道：6
 - numeric features：16 维
-- split：train 使用 `train`，val 使用 `frame_holdout`
+- train split reason：`train`
+- val split reason：`frame_holdout`
 - shard：`shards/train_000000.npz`、`shards/val_000000.npz`
 - 样本量：train 1 张、val 1 张
 
-生成目的：验证新版分片写入、可续跑、双尺度输入、numeric features 和三分类标签结构是否能跑通。
+## 10. V3 center-aware 冒烟数据：`candidate_scorer_v3_smoke_20260613/`
 
-### `candidate_scorer_v3_smoke_20260613/`
-V3 center-aware scorer 的冒烟数据。
+这是 V3 center-aware scorer 的 smoke 数据，来自 `data_model/`。
+
+生成目的：验证 V3 多任务模型需要的数据结构，包括三分类标签、中心先验通道、质量分支和 offset 回归。
 
 关键配置：
 
@@ -172,43 +224,28 @@ V3 center-aware scorer 的冒烟数据。
 - candidate methods：`daofind:2.5`
 - 候选去重半径：`2.5 px`
 - patch：中心 `31x31` + 上下文 `63x63`
-- 输入通道：6，包括归一化原图、背景/滤波响应以及中心先验/坐标类通道
+- 输入通道：6
 - numeric features：16 维，包括候选响应、局部噪声分位数、形状矩、多尺度/来源统计等
-- split：train 使用 `train`，val 使用 `frame_holdout`
+- train split reason：`train`
+- val split reason：`frame_holdout`
 - shard：`shards/train_000000.npz`、`shards/val_000000.npz`
 - 样本量：train 1 张、val 1 张
 
-生成目的：验证 V3 多任务 scorer 所需的数据结构：三分类、质量分支、offset 回归、score-NMS 前所需的候选元数据。
+## 11. 候选缓存：`candidate_cache/`
 
-### `candidate_cache/`
-候选评估缓存目录。
+`candidate_cache/` 是整图评估或候选探针过程中产生的缓存。
 
 内容：
 
 - 每个哈希子目录对应一组候选生成配置。
-- 里面按样本保存 `.npz`，例如 `sample_000011.npz`。
+- 子目录里按样本保存 `.npz`，例如 `sample_000011.npz`。
 
-生成目的：缓存候选点、标签点和部分图像特征，避免反复跑整图 DAOFIND/LoG 候选生成。缓存可删除，后续评估会按配置重建。
+生成目的：缓存候选点、标签点和部分图像特征，避免反复跑整图 DAOFIND/LoG。缓存可以删除，后续评估会按配置重建。
 
-### `data_S30Pro/`
-原始或外部整理的 S30Pro 数据目录。
+## 使用建议
 
-用途：
-
-- `data_model` 的上游来源之一。
-- 包含单帧 FITS/JPG、叠加图或相关中间文件。
-- 不直接作为 CNN scorer 的训练输入，通常先经过 `preprocessing/model_data_processing.py` 生成 `data_model`。
-
-### `data_ZTF/`
-ZTF 相关原始或参考数据目录。
-
-用途：
-
-- 早期对齐、星点质量分析或外部参考实验。
-- 当前单帧 scorer 主线不直接依赖它。
-
-## 读取建议
-
-- 训练 CNN V1：优先看 `candidate_scorer_sigma2p5_full/`、`candidate_scorer_sigma2_random2/`。
-- 训练 V3：正式全量数据如果存在应使用 shard/resume 格式；本目录里的 `candidate_scorer_v3_smoke_20260613/` 只是冒烟数据。
-- 做整图评估：使用 `data_model/` 和 `candidate_cache/`，不要用 crop F1 替代整图 F1。
+- 想理解数据源头：先看 `data_ZTF/` 和 `data_S30Pro/`。
+- 想复现主训练数据：看 `data_S30Pro/` -> `preprocessing/model_data_processing.py` -> `data_model/`。
+- 想复现 simple CNN V1：看 `candidate_scorer_sigma2p5_full/`。
+- 想理解为什么 `sigma=2.0` 没突破：看 `candidate_scorer_sigma2_random2/`。
+- 想看 V3 数据结构：看 `candidate_scorer_v3_smoke_20260613/`，但它只是 smoke 数据，不是全量训练集。
