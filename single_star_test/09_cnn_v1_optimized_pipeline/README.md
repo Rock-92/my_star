@@ -32,10 +32,14 @@ Linux/云端命令示例：
 
 ```bash
 export PYTHONPATH="$PWD/single_star_test/07_cnn_v3_center_aware/code:$PWD/single_star_test/00_unet_heatmap/code:$PWD/single_star_test"
+DATA_ROOT="$PWD/single_star_test/data/data_model"
+CONFIG="$PWD/single_star_test/00_unet_heatmap/code/star_unet/config.json"
+OUT_DIR="$PWD/single_star_test/data/candidate_scorer_v1_opt_sigma2p5_stratified"
 
 python -u -m candidate_scorer.build_dataset \
-  --data-root single_star_test/data/data_model \
-  --out-dir single_star_test/data/candidate_scorer_v1_opt_sigma2p5_stratified \
+  --data-root "$DATA_ROOT" \
+  --config "$CONFIG" \
+  --out-dir "$OUT_DIR" \
   --candidate-methods daofind:2.5 \
   --dedup-radius-px 2.5 \
   --crop-size 1024 \
@@ -67,9 +71,12 @@ code/scripts/train_simple_from_v3_shards.py
 全量训练命令：
 
 ```bash
+DATA_DIR="$PWD/single_star_test/data/candidate_scorer_v1_opt_sigma2p5_stratified"
+OUT_DIR="$PWD/single_star_test/09_cnn_v1_optimized_pipeline/results/simple_cnn_v1_opt_sigma2p5_seed42"
+
 python -u single_star_test/09_cnn_v1_optimized_pipeline/code/scripts/train_simple_from_v3_shards.py \
-  --data-dir single_star_test/data/candidate_scorer_v1_opt_sigma2p5_stratified \
-  --out-dir single_star_test/09_cnn_v1_optimized_pipeline/results/simple_cnn_v1_opt_sigma2p5_seed42 \
+  --data-dir "$DATA_DIR" \
+  --out-dir "$OUT_DIR" \
   --epochs 30 \
   --batch-size 512 \
   --pos-neg-ratio 1 \

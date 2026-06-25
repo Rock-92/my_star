@@ -50,6 +50,23 @@ NUMERIC_FEATURE_NAMES = [
 ]
 
 
+def resolve_cli_path(path: Path) -> Path:
+    """Resolve CLI paths from the current working directory first.
+
+    The archived code imports helpers from the old U-Net directory, whose
+    resolve_path treats paths as relative to that code folder. For the
+    single_star_test archive we want commands run from repo root to resolve
+    paths such as single_star_test/data/data_model literally.
+    """
+    path = Path(path)
+    if path.is_absolute():
+        return path
+    cwd_path = (Path.cwd() / path).resolve()
+    if cwd_path.exists() or path.parts[:1] == ("single_star_test",):
+        return cwd_path
+    return resolve_path(path)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build resumable sharded data for the center-aware candidate scorer.")
     parser.add_argument("--data-root", type=Path, default=Path("data/data_model"))
@@ -393,7 +410,7 @@ def _numeric_normalization(shards: list[Path]) -> dict[str, object]:
 
 def main() -> None:
     args = parse_args()
-    out_dir = resolve_path(args.out_dir)
+    out_dir = resolve_cli_path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     state_path = out_dir / "build_state.json"
     fingerprint = _config_fingerprint(args)
@@ -405,8 +422,8 @@ def main() -> None:
         if existing.get("fingerprint") != fingerprint:
             raise ValueError("resume configuration does not match the existing dataset fingerprint")
         state = existing
-    config = load_config(resolve_path(args.config))
-    data_root = resolve_path(args.data_root)
+    config = load_config(resolve_cli_path(args.config))
+    data_root = resolve_cli_path(args.data_root)
     split_rows = {
         "train": spread_subset(load_rows(data_root, args.train_split_reason), args.train_samples),
         "val": spread_subset(load_rows(data_root, args.val_split_reason), args.val_samples),
