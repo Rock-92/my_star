@@ -95,7 +95,7 @@ def find_mask(image_path: Path, input_dir: Path, manifest_rows: dict):
     return None
 
 
-def load_array(path: Path, npz_key: Optional[str] = None) -> np.ndarray:
+def load_array(path: Path, npz_key: Optional[str] = None):
     suffix = path.suffix.lower()
     if suffix in {".fits", ".fit", ".fts"}:
         from astropy.io import fits
@@ -117,7 +117,7 @@ def load_array(path: Path, npz_key: Optional[str] = None) -> np.ndarray:
     return arr
 
 
-def hierarchy_uint8(image: np.ndarray) -> np.ndarray:
+def hierarchy_uint8(image):
     image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
     image = image - image.min()
     image = np.clip(image, 0, np.iinfo(np.uint16).max).astype(np.uint16, copy=False)
@@ -128,7 +128,7 @@ def hierarchy_uint8(image: np.ndarray) -> np.ndarray:
     return out
 
 
-def normalize_mask(mask: np.ndarray) -> np.ndarray:
+def normalize_mask(mask):
     mask = np.nan_to_num(mask.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
     if mask.max() > 1.0:
         mask /= 255.0
