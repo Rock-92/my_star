@@ -99,7 +99,11 @@ def load_array(path: Path, npz_key: Optional[str] = None):
     suffix = path.suffix.lower()
     if suffix in {".fits", ".fit", ".fts"}:
         from astropy.io import fits
-        arr = fits.getdata(path)
+        if hasattr(fits, "getdata"):
+            arr = fits.getdata(path)
+        else:
+            with fits.open(path) as hdul:
+                arr = hdul[0].data
     elif suffix == ".npy":
         arr = np.load(path)
     elif suffix == ".npz":
@@ -236,6 +240,12 @@ def main():
     print(f"NPZ patches: {len(manifest)}")
     print(f"Train/val/test: {len(split_lists.get('train', []))}/{len(split_lists.get('val', []))}/{len(split_lists.get('test', []))}")
     print(f"Skipped: {len(skipped)}")
+    if skipped:
+        print("First skipped examples:")
+        for item in skipped[:10]:
+            print(f"  - {item['source']}: {item['reason']}")
+    if image_items and not manifest:
+        raise RuntimeError("Found source images, but generated 0 patches. Check skipped.json or the messages above.")
 
 
 if __name__ == "__main__":
