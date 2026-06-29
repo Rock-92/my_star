@@ -134,11 +134,31 @@ def batch_iou(outputs, target, threshold):
     return iou.mean().item()
 
 
+def update_binary_counts(outputs, target, threshold, counts):
+    pred = outputs[-1] if isinstance(outputs, (list, tuple)) else outputs
+    pred_bin = torch.sigmoid(pred) > threshold
+    target_bin = target > 0
+    counts["tp"] += (pred_bin & target_bin).sum().item()
+    counts["fp"] += (pred_bin & ~target_bin).sum().item()
+    counts["fn"] += (~pred_bin & target_bin).sum().item()
+
+
+def precision_recall_f1(counts):
+    tp = counts["tp"]
+    fp = counts["fp"]
+    fn = counts["fn"]
+    precision = tp / (tp + fp) if tp + fp > 0 else 0.0
+    recall = tp / (tp + fn) if tp + fn > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+    return precision, recall, f1
+
+
 def run_epoch(model, loader, optimizer, device, args, train):
     model.train(train)
     total_loss = 0.0
     total_iou = 0.0
     total_items = 0
+    counts = {"tp": 0, "fp": 0, "fn": 0}
     iterator = tqdm(loader, desc="train" if train else "val")
 
     max_batches = args.max_train_batches if train else args.max_val_batches
@@ -159,13 +179,26 @@ def run_epoch(model, loader, optimizer, device, args, train):
         batch_size = images.size(0)
         total_loss += loss.item() * batch_size
         total_iou += batch_iou(outputs, masks, args.threshold) * batch_size
+        if not train:
+            update_binary_counts(outputs, masks, args.threshold, counts)
         total_items += batch_size
-        iterator.set_postfix(loss=total_loss / max(1, total_items), iou=total_iou / max(1, total_items))
+        postfix = {
+            "loss": total_loss / max(1, total_items),
+            "iou": total_iou / max(1, total_items),
+        }
+        if not train:
+            precision, recall, f1 = precision_recall_f1(counts)
+            postfix.update({"precision": precision, "recall": recall, "f1": f1})
+        iterator.set_postfix(**postfix)
 
-    return {
+    metrics = {
         "loss": total_loss / max(1, total_items),
         "iou": total_iou / max(1, total_items),
     }
+    if not train:
+        precision, recall, f1 = precision_recall_f1(counts)
+        metrics.update({"precision": precision, "recall": recall, "f1": f1})
+    return metrics
 
 
 def save_checkpoint(path, model, optimizer, scheduler, epoch, best_val_iou, args):
@@ -243,7 +276,20 @@ def main():
     best_val_iou = -1.0
     log_path = save_dir / "train_log.csv"
     with log_path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["epoch", "lr", "train_loss", "train_iou", "val_loss", "val_iou"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "epoch",
+                "lr",
+                "train_loss",
+                "train_iou",
+                "val_loss",
+                "val_iou",
+                "val_precision",
+                "val_recall",
+                "val_f1",
+            ],
+        )
         writer.writeheader()
 
     (save_dir / "args.json").write_text(json.dumps(vars(args), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -262,6 +308,9 @@ def main():
             "train_iou": train_metrics["iou"],
             "val_loss": val_metrics["loss"],
             "val_iou": val_metrics["iou"],
+            "val_precision": val_metrics["precision"],
+            "val_recall": val_metrics["recall"],
+            "val_f1": val_metrics["f1"],
         }
         with log_path.open("a", encoding="utf-8", newline="") as f:
             csv.DictWriter(f, fieldnames=row.keys()).writerow(row)

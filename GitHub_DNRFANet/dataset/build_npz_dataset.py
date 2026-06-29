@@ -123,7 +123,6 @@ def load_array(path: Path, npz_key: Optional[str] = None):
 
 def hierarchy_uint8(image):
     image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
-    image = image - image.min()
     image = np.clip(image, 0, np.iinfo(np.uint16).max).astype(np.uint16, copy=False)
     out = np.empty((image.shape[0], image.shape[1], 3), dtype=np.uint8)
     out[..., 0] = (image >> 8) & 0xFF
