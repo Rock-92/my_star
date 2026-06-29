@@ -22,6 +22,70 @@ from model.model_factory import get_model
 from model.utils import weights_init_xavier
 
 
+def _try_import(module_name):
+    try:
+        __import__(module_name)
+        return True
+    except Exception:
+        return False
+
+
+def resolve_device(requested: str) -> torch.device:
+    requested = (requested or "auto").lower()
+    if requested == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            return torch.device("xpu")
+        if _try_import("torch_npu") and hasattr(torch, "npu") and torch.npu.is_available():
+            return torch.device("npu")
+        if _try_import("torch_musa") and hasattr(torch, "musa") and torch.musa.is_available():
+            return torch.device("musa")
+        if _try_import("habana_frameworks.torch.core"):
+            return torch.device("hpu")
+        return torch.device("cpu")
+
+    if requested in ("cuda", "gpu"):
+        if not torch.cuda.is_available():
+            raise RuntimeError("Requested CUDA/ROCm device, but torch.cuda.is_available() is False.")
+        return torch.device("cuda")
+    if requested == "xpu":
+        if not (hasattr(torch, "xpu") and torch.xpu.is_available()):
+            raise RuntimeError("Requested XPU device, but torch.xpu is unavailable.")
+        return torch.device("xpu")
+    if requested == "npu":
+        if not (_try_import("torch_npu") and hasattr(torch, "npu") and torch.npu.is_available()):
+            raise RuntimeError("Requested NPU device, but torch_npu/torch.npu is unavailable.")
+        return torch.device("npu")
+    if requested == "musa":
+        if not (_try_import("torch_musa") and hasattr(torch, "musa") and torch.musa.is_available()):
+            raise RuntimeError("Requested MUSA device, but torch_musa/torch.musa is unavailable.")
+        return torch.device("musa")
+    if requested == "hpu":
+        if not _try_import("habana_frameworks.torch.core"):
+            raise RuntimeError("Requested HPU device, but Habana torch framework is unavailable.")
+        return torch.device("hpu")
+    if requested == "cpu":
+        return torch.device("cpu")
+    return torch.device(requested)
+
+
+def accelerator_name(device: torch.device) -> str:
+    if device.type == "cuda":
+        backend = "ROCm/HIP" if getattr(torch.version, "hip", None) else "CUDA"
+        name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "unknown"
+        return f"{backend}: {name}"
+    if device.type == "xpu" and hasattr(torch, "xpu"):
+        return f"XPU: {torch.xpu.get_device_name(0)}"
+    if device.type == "npu" and hasattr(torch, "npu"):
+        return "NPU"
+    if device.type == "musa" and hasattr(torch, "musa"):
+        return "MUSA"
+    if device.type == "hpu":
+        return "HPU"
+    return "CPU"
+
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -29,7 +93,8 @@ def set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = True
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.benchmark = True
 
 
 def str2bool(value):
@@ -241,7 +306,7 @@ def parse_args():
     parser.add_argument("--deep-supervision", type=str2bool, default=False)
     parser.add_argument("--resume", default="")
     parser.add_argument("--seed", type=int, default=1029)
-    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--device", default="auto", help="auto, cpu, cuda/ROCm, npu, musa, xpu, hpu")
     return parser.parse_args()
 
 
@@ -255,11 +320,12 @@ def main():
     save_dir = resolve_path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    device = torch.device(args.device)
+    device = resolve_device(args.device)
     train_set = NPZPatchDataset(train_list, require_mask=True)
     val_set = NPZPatchDataset(val_list, require_mask=True)
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=device.type == "cuda", drop_last=True)
-    val_loader = DataLoader(val_set, batch_size=args.val_batch_size, shuffle=False, num_workers=args.workers, pin_memory=device.type == "cuda")
+    pin_memory = device.type == "cuda"
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=pin_memory, drop_last=True)
+    val_loader = DataLoader(val_set, batch_size=args.val_batch_size, shuffle=False, num_workers=args.workers, pin_memory=pin_memory)
 
     model = build_model(args, device)
     if args.optimizer == "Adam":
@@ -271,7 +337,7 @@ def main():
     print(f"Train list: {train_list} ({len(train_set)} samples)")
     print(f"Val list: {val_list} ({len(val_set)} samples)")
     print(f"Save dir: {save_dir}")
-    print(f"Device: {device}")
+    print(f"Device: {device} ({accelerator_name(device)})")
 
     best_val_iou = -1.0
     log_path = save_dir / "train_log.csv"
