@@ -353,3 +353,32 @@ class DeepSourceStarDataset(Dataset):
             "target": torch.from_numpy(target[None].astype(np.float32)),
             "sample_id": row["sample_id"],
         }
+
+
+class PrecomputedCropDataset(Dataset):
+    def __init__(self, crop_data_dir: str | Path, split_name: str) -> None:
+        self.path = Path(crop_data_dir) / f"{split_name}.npz"
+        if not self.path.exists():
+            raise FileNotFoundError(f"missing precomputed crop file: {self.path}")
+        with np.load(self.path, allow_pickle=False) as data:
+            self.images = data["images"].astype(np.float32)
+            self.targets = data["targets"].astype(np.float32)
+            self.sample_ids = data["sample_ids"].astype(str)
+        if self.images.shape != self.targets.shape:
+            raise ValueError(f"image/target shape mismatch in {self.path}: {self.images.shape} vs {self.targets.shape}")
+        if self.images.ndim != 4 or self.images.shape[1] != 1:
+            raise ValueError(f"expected images shaped [N, 1, H, W], got {self.images.shape}")
+
+    @property
+    def rows(self) -> list[dict[str, str]]:
+        return [{"sample_id": sample_id} for sample_id in sorted(set(self.sample_ids.tolist()))]
+
+    def __len__(self) -> int:
+        return int(self.images.shape[0])
+
+    def __getitem__(self, index: int) -> dict[str, torch.Tensor | str]:
+        return {
+            "image": torch.from_numpy(self.images[index]),
+            "target": torch.from_numpy(self.targets[index]),
+            "sample_id": str(self.sample_ids[index]),
+        }

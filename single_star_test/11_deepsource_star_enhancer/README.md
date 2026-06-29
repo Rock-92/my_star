@@ -47,6 +47,21 @@ output enhanced map
 
 脚本默认会自动寻找数据目录：优先使用仓库根目录下与 `single_star_test` 平级的 `data_model`，不存在时回退到旧的 `single_star_test/data/data_model`。
 
+为避免训练时反复读取 FITS、mask 和生成 target，推荐先预生成固定 crop 数据集：
+
+```bash
+python -u single_star_test/11_deepsource_star_enhancer/code/scripts/build_crop_dataset.py \
+  --data-root data_model \
+  --out-dir single_star_test/11_deepsource_star_enhancer/crop_data/deepsource_200x20_seed42 \
+  --train-samples 0 \
+  --val-samples 0 \
+  --test-samples 0 \
+  --crop-size 200 \
+  --crops-per-image 20 \
+  --target-mode deepsource \
+  --seed 42
+```
+
 本地 smoke test：
 
 ```bash
@@ -70,6 +85,7 @@ python -u single_star_test/11_deepsource_star_enhancer/code/deepsource_star/trai
 ```bash
 python -u single_star_test/11_deepsource_star_enhancer/code/deepsource_star/train.py \
   --data-root data_model \
+  --crop-data-dir single_star_test/11_deepsource_star_enhancer/crop_data/deepsource_200x20_seed42 \
   --out-dir single_star_test/11_deepsource_star_enhancer/results/deepsource_aligned_seed42 \
   --train-samples 0 \
   --val-samples 0 \
@@ -78,8 +94,8 @@ python -u single_star_test/11_deepsource_star_enhancer/code/deepsource_star/trai
   --crops-per-image 20 \
   --target-mode deepsource \
   --epochs 20 \
-  --batch-size 32 \
-  --num-workers 4 \
+  --batch-size 128 \
+  --num-workers 2 \
   --val-dao-method daofind:5.0 \
   --device cuda \
   --seed 42

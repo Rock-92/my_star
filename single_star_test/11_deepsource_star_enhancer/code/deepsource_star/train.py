@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - cloud env normally has tqdm, fallback 
     def tqdm(iterable, **kwargs):
         return iterable
 
-from deepsource_star.data import DeepSourceStarDataset  # noqa: E402
+from deepsource_star.data import DeepSourceStarDataset, PrecomputedCropDataset  # noqa: E402
 from deepsource_star.model import DeepSourceEnhancer  # noqa: E402
 from candidate_scorer.pipeline import generate_candidates  # noqa: E402
 from star_unet.postprocess import detection_metrics, heatmap_to_centroids  # noqa: E402
@@ -48,6 +48,7 @@ def default_data_root() -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a DeepSource-style star enhancer on data_model.")
     parser.add_argument("--data-root", type=Path, default=default_data_root())
+    parser.add_argument("--crop-data-dir", type=Path, default=None, help="Optional directory with train/val/test.npz crops.")
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--split-csv", type=Path, default=None, help="Optional 11-specific split CSV with split11 column.")
     parser.add_argument("--train-split-reason", default="train")
@@ -119,6 +120,20 @@ def make_dataset(args: argparse.Namespace, split_reason: str, count: int) -> Dee
         background_level=args.background_level,
         alpha=args.alpha,
         seed=args.seed,
+    )
+
+
+def make_datasets(args: argparse.Namespace):
+    if args.crop_data_dir is not None:
+        return (
+            PrecomputedCropDataset(args.crop_data_dir, "train"),
+            PrecomputedCropDataset(args.crop_data_dir, "val"),
+            PrecomputedCropDataset(args.crop_data_dir, "test"),
+        )
+    return (
+        make_dataset(args, args.train_split_reason, args.train_samples),
+        make_dataset(args, args.val_split_reason, args.val_samples),
+        make_dataset(args, args.test_split_reason, args.test_samples),
     )
 
 
@@ -249,9 +264,7 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     device = resolve_device(args.device)
 
-    train_ds = make_dataset(args, args.train_split_reason, args.train_samples)
-    val_ds = make_dataset(args, args.val_split_reason, args.val_samples)
-    test_ds = make_dataset(args, args.test_split_reason, args.test_samples)
+    train_ds, val_ds, test_ds = make_datasets(args)
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
