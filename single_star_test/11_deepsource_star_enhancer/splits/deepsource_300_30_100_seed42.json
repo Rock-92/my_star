@@ -1,0 +1,11 @@
+{
+  "data_root": "single_star_test\\data\\data_model",
+  "out_csv": "single_star_test\\11_deepsource_star_enhancer\\splits\\deepsource_300_30_100_seed42.csv",
+  "seed": 42,
+  "counts": {
+    "train": 300,
+    "val": 30,
+    "test": 100
+  },
+  "stratify_column": "group"
+}
