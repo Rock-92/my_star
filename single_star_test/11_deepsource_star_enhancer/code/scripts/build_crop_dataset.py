@@ -76,20 +76,26 @@ def write_split(out_dir: Path, split_name: str, dataset: DeepSourceStarDataset) 
     targets = np.empty_like(images)
     sample_ids: list[str] = []
     rows = []
-    for index in tqdm(range(len(dataset)), desc=f"build {split_name}", dynamic_ncols=True):
-        item = dataset[index]
-        image = item["image"].numpy().astype(np.float32)
-        target = item["target"].numpy().astype(np.float32)
-        sample_id = str(item["sample_id"])
-        images[index] = image
-        targets[index] = target
-        sample_ids.append(sample_id)
-        rows.append({"index": index, "sample_id": sample_id})
+    index = 0
+    progress = tqdm(dataset.rows, desc=f"build {split_name}", dynamic_ncols=True)
+    for image_index, row in enumerate(progress):
+        image_full, target_full = dataset._load_pair(row)
+        sample_id = str(row["sample_id"])
+        for crop_index in range(dataset.crops_per_image):
+            global_index = image_index * dataset.crops_per_image + crop_index
+            image_crop, target_crop = dataset._crop(image_full, target_full, global_index)
+            images[index, 0] = image_crop.astype(np.float32)
+            targets[index, 0] = target_crop.astype(np.float32)
+            sample_ids.append(sample_id)
+            rows.append({"index": index, "sample_id": sample_id, "crop_index": crop_index})
+            index += 1
+    if index != len(dataset):
+        raise RuntimeError(f"wrote {index} crops for {split_name}, expected {len(dataset)}")
 
     out_path = out_dir / f"{split_name}.npz"
     np.savez(out_path, images=images, targets=targets, sample_ids=np.asarray(sample_ids, dtype="U64"))
     with (out_dir / f"{split_name}.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["index", "sample_id"])
+        writer = csv.DictWriter(handle, fieldnames=["index", "sample_id", "crop_index"])
         writer.writeheader()
         writer.writerows(rows)
     return {

@@ -47,7 +47,7 @@ output enhanced map
 
 脚本默认会自动寻找数据目录：优先使用仓库根目录下与 `single_star_test` 平级的 `data_model`，不存在时回退到旧的 `single_star_test/data/data_model`。
 
-为避免训练时反复读取 FITS、mask 和生成 target，推荐先预生成固定 crop 数据集：
+为避免训练时反复读取 FITS、mask 和生成 target，推荐先预生成固定 crop 数据集。预生成脚本按图处理，每张图只读取一次 FITS/mask、生成一次整图 target，然后从内存中裁出固定数量的 crop：
 
 ```bash
 python -u single_star_test/11_deepsource_star_enhancer/code/scripts/build_crop_dataset.py \
