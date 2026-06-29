@@ -135,7 +135,7 @@ def normalize_mask(mask):
     return np.clip(mask, 0.0, 1.0).astype(np.float32)
 
 
-def pad_to_patch(arr: np.ndarray, patch_size: int):
+def pad_to_patch(arr, patch_size: int):
     h, w = arr.shape[:2]
     pad_h = max(0, patch_size - h)
     pad_w = max(0, patch_size - w)
