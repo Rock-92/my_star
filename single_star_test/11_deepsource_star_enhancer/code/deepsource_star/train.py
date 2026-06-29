@@ -67,6 +67,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--triangle-radius", type=float, default=6.0)
     parser.add_argument("--background-level", type=float, default=0.05)
     parser.add_argument("--alpha", type=float, default=0.75)
+    parser.add_argument("--target-weighting", choices=["none", "stack_photometry"], default="stack_photometry")
+    parser.add_argument("--target-min-amplitude", type=float, default=0.25)
+    parser.add_argument("--target-max-amplitude", type=float, default=1.0)
+    parser.add_argument("--target-min-radius", type=float, default=2.0)
+    parser.add_argument("--target-max-radius", type=float, default=8.0)
+    parser.add_argument("--target-aperture-radius", type=float, default=5.0)
+    parser.add_argument("--target-annulus-inner", type=float, default=8.0)
+    parser.add_argument("--target-annulus-outer", type=float, default=14.0)
     parser.add_argument("--filters", type=int, default=16)
     parser.add_argument("--kernel-size", type=int, default=5)
     parser.add_argument("--dropout", type=float, default=0.25)
@@ -119,6 +127,14 @@ def make_dataset(args: argparse.Namespace, split_reason: str, count: int) -> Dee
         triangle_radius=args.triangle_radius,
         background_level=args.background_level,
         alpha=args.alpha,
+        target_weighting=args.target_weighting,
+        target_min_amplitude=args.target_min_amplitude,
+        target_max_amplitude=args.target_max_amplitude,
+        target_min_radius=args.target_min_radius,
+        target_max_radius=args.target_max_radius,
+        target_aperture_radius=args.target_aperture_radius,
+        target_annulus_inner=args.target_annulus_inner,
+        target_annulus_outer=args.target_annulus_outer,
         seed=args.seed,
     )
 

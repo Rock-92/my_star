@@ -59,6 +59,7 @@ python -u single_star_test/11_deepsource_star_enhancer/code/scripts/build_crop_d
   --crop-size 200 \
   --crops-per-image 20 \
   --target-mode deepsource \
+  --target-weighting stack_photometry \
   --seed 42
 ```
 
@@ -74,6 +75,7 @@ python -u single_star_test/11_deepsource_star_enhancer/code/deepsource_star/trai
   --crop-size 200 \
   --crops-per-image 2 \
   --target-mode deepsource \
+  --target-weighting stack_photometry \
   --epochs 2 \
   --batch-size 2 \
   --device cuda \
@@ -93,6 +95,7 @@ python -u single_star_test/11_deepsource_star_enhancer/code/deepsource_star/trai
   --crop-size 200 \
   --crops-per-image 20 \
   --target-mode deepsource \
+  --target-weighting stack_photometry \
   --epochs 20 \
   --batch-size 128 \
   --num-workers 2 \

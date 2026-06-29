@@ -257,6 +257,141 @@ def deepsource_target_from_delta(
     return np.clip(target, 0.0, 1.0).astype(np.float32)
 
 
+def transform_stack_centroids_to_single(centroids_yx: np.ndarray, row: dict[str, str]) -> np.ndarray:
+    centroids = np.asarray(centroids_yx, dtype=np.float32).reshape((-1, 2))
+    if centroids.size == 0:
+        return centroids
+    matrix = np.asarray(
+        [
+            [float(row.get("label_transform_a") or 1.0), float(row.get("label_transform_b") or 0.0)],
+            [float(row.get("label_transform_c") or 0.0), float(row.get("label_transform_d") or 1.0)],
+        ],
+        dtype=np.float32,
+    )
+    shift = np.asarray(
+        [float(row.get("label_shift_x_px") or 0.0), float(row.get("label_shift_y_px") or 0.0)],
+        dtype=np.float32,
+    )
+    xy = centroids[:, [1, 0]]
+    transformed_xy = xy @ matrix.T + shift[None, :]
+    return transformed_xy[:, [1, 0]].astype(np.float32)
+
+
+def estimate_stack_photometry(
+    stack_image: np.ndarray,
+    centroids_yx: np.ndarray,
+    aperture_radius: float = 5.0,
+    annulus_inner: float = 8.0,
+    annulus_outer: float = 14.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    image = np.asarray(stack_image, dtype=np.float32)
+    centroids = np.asarray(centroids_yx, dtype=np.float32).reshape((-1, 2))
+    fluxes = np.zeros(len(centroids), dtype=np.float32)
+    fwhms = np.full(len(centroids), 3.0, dtype=np.float32)
+    mags = np.full(len(centroids), np.inf, dtype=np.float32)
+    if image.ndim != 2 or not len(centroids):
+        return fluxes, fwhms, mags
+
+    height, width = image.shape
+    outer = max(float(annulus_outer), float(aperture_radius) + 1.0)
+    radius_px = max(2, int(np.ceil(outer)))
+    aperture2 = float(aperture_radius) ** 2
+    annulus_inner2 = float(annulus_inner) ** 2
+    annulus_outer2 = outer**2
+    for idx, (cy, cx) in enumerate(centroids):
+        y0 = max(0, int(np.floor(float(cy))) - radius_px)
+        y1 = min(height, int(np.floor(float(cy))) + radius_px + 1)
+        x0 = max(0, int(np.floor(float(cx))) - radius_px)
+        x1 = min(width, int(np.floor(float(cx))) + radius_px + 1)
+        if y0 >= y1 or x0 >= x1:
+            continue
+        patch = image[y0:y1, x0:x1]
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        rr2 = (yy + 0.5 - float(cy)) ** 2 + (xx + 0.5 - float(cx)) ** 2
+        annulus = (rr2 >= annulus_inner2) & (rr2 <= annulus_outer2)
+        finite_patch = patch[np.isfinite(patch)]
+        if not finite_patch.size:
+            continue
+        if np.any(annulus):
+            finite_annulus = patch[annulus & np.isfinite(patch)]
+            background = float(np.median(finite_annulus)) if finite_annulus.size else float(np.median(finite_patch))
+        else:
+            background = float(np.median(finite_patch))
+        aperture = rr2 <= aperture2
+        signal = np.maximum(np.nan_to_num(patch, nan=background) - background, 0.0)
+        weights = signal * aperture
+        flux = float(np.sum(weights))
+        if flux <= 0.0 or not np.isfinite(flux):
+            continue
+        sigma = float(np.sqrt(max(np.sum(weights * rr2) / (2.0 * flux), 1e-6)))
+        fluxes[idx] = flux
+        fwhms[idx] = np.float32(np.clip(2.355 * sigma, 1.5, 12.0))
+        mags[idx] = np.float32(-2.5 * np.log10(max(flux, 1e-6)))
+    return fluxes, fwhms, mags
+
+
+def target_weights_from_photometry(
+    fluxes: np.ndarray,
+    fwhms: np.ndarray,
+    min_amplitude: float = 0.25,
+    max_amplitude: float = 1.0,
+    min_radius: float = 2.0,
+    max_radius: float = 8.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    flux = np.asarray(fluxes, dtype=np.float32)
+    fwhm = np.asarray(fwhms, dtype=np.float32)
+    valid = np.isfinite(flux) & (flux > 0.0)
+    brightness = np.zeros_like(flux, dtype=np.float32)
+    mags = np.full_like(flux, np.inf, dtype=np.float32)
+    if np.any(valid):
+        log_flux = np.log10(np.maximum(flux[valid], 1e-6))
+        low, high = np.percentile(log_flux, [10.0, 95.0])
+        if not np.isfinite(high) or high <= low:
+            high = low + 1.0
+        brightness[valid] = np.clip((log_flux - low) / (high - low), 0.0, 1.0)
+        mags[valid] = -2.5 * log_flux
+    amp = float(min_amplitude) + (float(max_amplitude) - float(min_amplitude)) * brightness
+    size_norm = np.clip((fwhm - 1.5) / max(float(max_radius) - 1.5, 1e-6), 0.0, 1.0)
+    radius_brightness = float(min_radius) + (float(max_radius) - float(min_radius)) * brightness
+    radius_size = float(min_radius) + (float(max_radius) - float(min_radius)) * size_norm
+    radius = 0.65 * radius_brightness + 0.35 * radius_size
+    radius = np.clip(radius, float(min_radius), float(max_radius))
+    amp[~valid] = float(min_amplitude)
+    radius[~valid] = float(min_radius)
+    return amp.astype(np.float32), radius.astype(np.float32), mags.astype(np.float32)
+
+
+def variable_gaussian_target(
+    shape: tuple[int, int],
+    centroids_yx: np.ndarray,
+    amplitudes: np.ndarray,
+    radii: np.ndarray,
+) -> np.ndarray:
+    height, width = shape
+    target = np.zeros((height, width), dtype=np.float32)
+    for (cy, cx), amplitude, radius in zip(
+        np.asarray(centroids_yx, dtype=np.float32).reshape((-1, 2)),
+        np.asarray(amplitudes, dtype=np.float32).reshape((-1,)),
+        np.asarray(radii, dtype=np.float32).reshape((-1,)),
+    ):
+        if not (np.isfinite(cy) and np.isfinite(cx) and np.isfinite(radius)):
+            continue
+        if cx < 0 or cy < 0 or cx >= width or cy >= height:
+            continue
+        radius = float(np.clip(radius, 1.0, 32.0))
+        extent = max(2, int(np.ceil(radius * 2.0)))
+        y0 = max(0, int(np.floor(cy)) - extent)
+        y1 = min(height, int(np.floor(cy)) + extent + 1)
+        x0 = max(0, int(np.floor(cx)) - extent)
+        x1 = min(width, int(np.floor(cx)) + extent + 1)
+        yy, xx = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+        rr2 = (yy + 0.5 - float(cy)) ** 2 + (xx + 0.5 - float(cx)) ** 2
+        sigma = radius / np.sqrt(-2.0 * np.log(0.05))
+        blob = float(amplitude) * np.exp(-0.5 * rr2 / max(sigma**2, 1e-6))
+        target[y0:y1, x0:x1] = np.maximum(target[y0:y1, x0:x1], blob.astype(np.float32))
+    return np.clip(target, 0.0, 1.0).astype(np.float32)
+
+
 class DeepSourceStarDataset(Dataset):
     def __init__(
         self,
@@ -276,6 +411,14 @@ class DeepSourceStarDataset(Dataset):
         triangle_radius: float = 6.0,
         background_level: float = 0.05,
         alpha: float = 0.75,
+        target_weighting: str = "none",
+        target_min_amplitude: float = 0.25,
+        target_max_amplitude: float = 1.0,
+        target_min_radius: float = 2.0,
+        target_max_radius: float = 8.0,
+        target_aperture_radius: float = 5.0,
+        target_annulus_inner: float = 8.0,
+        target_annulus_outer: float = 14.0,
         seed: int = 42,
     ) -> None:
         self.data_root = Path(data_root)
@@ -298,7 +441,16 @@ class DeepSourceStarDataset(Dataset):
         self.triangle_radius = float(triangle_radius)
         self.background_level = float(background_level)
         self.alpha = float(alpha)
+        self.target_weighting = str(target_weighting).lower()
+        self.target_min_amplitude = float(target_min_amplitude)
+        self.target_max_amplitude = float(target_max_amplitude)
+        self.target_min_radius = float(target_min_radius)
+        self.target_max_radius = float(target_max_radius)
+        self.target_aperture_radius = float(target_aperture_radius)
+        self.target_annulus_inner = float(target_annulus_inner)
+        self.target_annulus_outer = float(target_annulus_outer)
         self.seed = int(seed)
+        self._missing_stack_warning_printed = False
 
     def __len__(self) -> int:
         return len(self.rows) * self.crops_per_image
@@ -308,6 +460,10 @@ class DeepSourceStarDataset(Dataset):
         mask_path = resolve_data_path(self.data_root, row.get("mask_out") or "")
         raw = read_gray_image(image_path, self.fit_channel_mode)
         image = normalize_image(raw, self.image_normalization)
+        if self.target_weighting == "stack_photometry":
+            weighted = self._load_stack_photometry_target(row, image.shape)
+            if weighted is not None:
+                return image.astype(np.float32), weighted.astype(np.float32)
         mask = read_mask_image(mask_path)
         centroids = heatmap_to_centroids(mask, threshold=self.mask_threshold, min_distance=self.min_distance)
         delta = centroids_to_delta(image.shape, centroids)
@@ -320,6 +476,64 @@ class DeepSourceStarDataset(Dataset):
             alpha=self.alpha,
         )
         return image.astype(np.float32), target.astype(np.float32)
+
+    def _load_stack_photometry_target(self, row: dict[str, str], image_shape: tuple[int, int]) -> np.ndarray | None:
+        stack_mask_text = row.get("stack_mask") or ""
+        if not stack_mask_text:
+            return None
+        stack_mask_path = resolve_data_path(self.data_root, stack_mask_text)
+        if not stack_mask_path.exists():
+            return None
+        stack_mask = read_mask_image(stack_mask_path)
+        stack_centroids = heatmap_to_centroids(
+            stack_mask,
+            threshold=self.mask_threshold,
+            min_distance=self.min_distance,
+        )
+        if not len(stack_centroids):
+            return np.zeros(image_shape, dtype=np.float32)
+
+        stack_path = resolve_data_path(self.data_root, row.get("stack_fits") or "")
+        if stack_path.exists():
+            stack_image = read_gray_image(stack_path, self.fit_channel_mode)
+            fluxes, fwhms, _ = estimate_stack_photometry(
+                stack_image,
+                stack_centroids,
+                aperture_radius=self.target_aperture_radius,
+                annulus_inner=self.target_annulus_inner,
+                annulus_outer=self.target_annulus_outer,
+            )
+        else:
+            if not self._missing_stack_warning_printed:
+                print(
+                    f"[warn] stack_fits not found, using stack_mask-only target sizing: {stack_path}",
+                    flush=True,
+                )
+                self._missing_stack_warning_printed = True
+            fluxes = stack_mask[
+                np.clip(np.round(stack_centroids[:, 0] - 0.5).astype(int), 0, stack_mask.shape[0] - 1),
+                np.clip(np.round(stack_centroids[:, 1] - 0.5).astype(int), 0, stack_mask.shape[1] - 1),
+            ].astype(np.float32)
+            fwhms = np.full(len(stack_centroids), self.triangle_radius, dtype=np.float32)
+
+        single_centroids = transform_stack_centroids_to_single(stack_centroids, row)
+        keep = (
+            (single_centroids[:, 0] >= 0.0)
+            & (single_centroids[:, 0] < image_shape[0])
+            & (single_centroids[:, 1] >= 0.0)
+            & (single_centroids[:, 1] < image_shape[1])
+        )
+        if not np.any(keep):
+            return np.zeros(image_shape, dtype=np.float32)
+        amplitudes, radii, _ = target_weights_from_photometry(
+            fluxes[keep],
+            fwhms[keep],
+            min_amplitude=self.target_min_amplitude,
+            max_amplitude=self.target_max_amplitude,
+            min_radius=self.target_min_radius,
+            max_radius=self.target_max_radius,
+        )
+        return variable_gaussian_target(image_shape, single_centroids[keep], amplitudes, radii)
 
     def _crop(self, image: np.ndarray, target: np.ndarray, index: int) -> tuple[np.ndarray, np.ndarray]:
         if self.crop_size <= 0:
