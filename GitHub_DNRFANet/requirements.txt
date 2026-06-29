@@ -1,0 +1,15 @@
+# Core dependencies for:
+#   dataset/build_npz_dataset.py
+#   train_npz.py
+#
+# Install PyTorch according to your CUDA version if the cloud image does not
+# already provide it. See https://pytorch.org/get-started/locally/
+numpy>=1.23,<2.0
+astropy>=5.0
+pillow>=9.0
+tqdm>=4.64
+torch>=2.0
+torchvision>=0.15
+matplotlib>=3.5
+opencv-python-headless>=4.7
+

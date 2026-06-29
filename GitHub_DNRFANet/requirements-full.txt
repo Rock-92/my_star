@@ -1,0 +1,8 @@
+# Full dependency set for the original DNRFA-Net scripts as well as npz training.
+-r requirements.txt
+pandas>=1.5
+scipy>=1.9
+scikit-image>=0.19
+sep>=1.2
+imageio>=2.25
+
