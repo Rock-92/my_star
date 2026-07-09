@@ -1,0 +1,21 @@
+sample_id,split,group,feature_split,single_fits,stack_fits
+sample_000001,train,1,val,data\data_S30Pro\1_sub\Light_1_20.0s_IRCUT_20260607-020100.fit,data\data_S30Pro\1\Stacked_24_1_20.0s_IRCUT_20260607-021001.fit
+sample_000002,train,1,train,data\data_S30Pro\1_sub\Light_1_20.0s_IRCUT_20260607-020121.fit,data\data_S30Pro\1\Stacked_24_1_20.0s_IRCUT_20260607-021001.fit
+sample_000114,train,6,train,data\data_S30Pro\6_sub\Light_HIP 75104_20.0s_IRCUT_20260602-204308.fit,data\data_S30Pro\6\Stacked_18_HIP 75104_20.0s_IRCUT_20260602-205000.fit
+sample_000115,train,6,train,data\data_S30Pro\6_sub\Light_HIP 75104_20.0s_IRCUT_20260602-204329.fit,data\data_S30Pro\6\Stacked_18_HIP 75104_20.0s_IRCUT_20260602-205000.fit
+sample_000144,train,9,train,data\data_S30Pro\9_sub\Light_RW Boötis_20.0s_IRCUT_20260602-210047.fit,data\data_S30Pro\9\Stacked_23_RW Boötis_20.0s_IRCUT_20260602-211002.fit
+sample_000145,train,9,train,data\data_S30Pro\9_sub\Light_RW Boötis_20.0s_IRCUT_20260602-210108.fit,data\data_S30Pro\9\Stacked_23_RW Boötis_20.0s_IRCUT_20260602-211002.fit
+sample_000167,train,10,train,data\data_S30Pro\10_sub\Light_Unknown_20.0s_IRCUT_20260602-205047.fit,data\data_S30Pro\10\Stacked_24_Unknown_20.0s_IRCUT_20260602-210000.fit
+sample_000168,train,10,train,data\data_S30Pro\10_sub\Light_Unknown_20.0s_IRCUT_20260602-205108.fit,data\data_S30Pro\10\Stacked_24_Unknown_20.0s_IRCUT_20260602-210000.fit
+sample_000630,train,73,train,data\data_S30Pro\73_sub\Light_73_20.0s_IRCUT_20260607-021129.fit,data\data_S30Pro\73\Stacked_22_73_20.0s_IRCUT_20260607-022001.fit
+sample_000631,train,73,train,data\data_S30Pro\73_sub\Light_73_20.0s_IRCUT_20260607-021150.fit,data\data_S30Pro\73\Stacked_22_73_20.0s_IRCUT_20260607-022001.fit
+sample_000652,train,74,train,data\data_S30Pro\74_sub\Light_74_20.0s_IRCUT_20260607-022047.fit,data\data_S30Pro\74\Stacked_24_74_20.0s_IRCUT_20260607-022959.fit
+sample_000653,train,74,train,data\data_S30Pro\74_sub\Light_74_20.0s_IRCUT_20260607-022108.fit,data\data_S30Pro\74\Stacked_24_74_20.0s_IRCUT_20260607-022959.fit
+sample_000676,train,75,train,data\data_S30Pro\75_sub\Light_75_20.0s_IRCUT_20260607-023047.fit,data\data_S30Pro\75\Stacked_23_75_20.0s_IRCUT_20260607-024001.fit
+sample_000677,train,75,train,data\data_S30Pro\75_sub\Light_75_20.0s_IRCUT_20260607-023108.fit,data\data_S30Pro\75\Stacked_23_75_20.0s_IRCUT_20260607-024001.fit
+sample_000699,train,76,train,data\data_S30Pro\76_sub\Light_76_20.0s_IRCUT_20260607-024046.fit,data\data_S30Pro\76\Stacked_24_76_20.0s_IRCUT_20260607-025000.fit
+sample_000700,train,76,train,data\data_S30Pro\76_sub\Light_76_20.0s_IRCUT_20260607-024107.fit,data\data_S30Pro\76\Stacked_24_76_20.0s_IRCUT_20260607-025000.fit
+sample_000723,train,77,train,data\data_S30Pro\77_sub\Light_77_20.0s_IRCUT_20260607-025047.fit,data\data_S30Pro\77\Stacked_24_77_20.0s_IRCUT_20260607-030000.fit
+sample_000724,train,77,train,data\data_S30Pro\77_sub\Light_77_20.0s_IRCUT_20260607-025108.fit,data\data_S30Pro\77\Stacked_24_77_20.0s_IRCUT_20260607-030000.fit
+sample_000747,train,78,val,data\data_S30Pro\78_sub\Light_78_20.0s_IRCUT_20260607-030047.fit,data\data_S30Pro\78\Stacked_24_78_20.0s_IRCUT_20260607-030959.fit
+sample_000748,train,78,train,data\data_S30Pro\78_sub\Light_78_20.0s_IRCUT_20260607-030108.fit,data\data_S30Pro\78\Stacked_24_78_20.0s_IRCUT_20260607-030959.fit

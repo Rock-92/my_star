@@ -1,12 +1,20 @@
 # Local data and generated artifacts
-data/
 analysis/
 analysis_outputs/
 test_image/
 testimage/
 testimages/
+test/
 preprocessing/gaia_data/
 make_star/gaia.csv
+
+# Organized data layout
+data/data_model/
+data/data_S30Pro/
+data/data_gaia/
+data/data_20/unet_softmask/
+data/data_20/gaia_green_preview/
+data/data_20/gaia_overlay_check/
 
 # Python cache
 __pycache__/
@@ -16,6 +24,9 @@ __pycache__/
 runs/
 runs_before/
 result/
+U-Net/runs/
+U-Net/result/
+tool/result/
 
 # Organized local experiment artifacts
 single_star_test/data/*
@@ -36,3 +47,4 @@ single_star_test/preprocessing/gaia_data/
 # Auxiliary files moved outside the experiment archive
 project_auxiliary/test_image/
 project_auxiliary/make_star/gaia.csv
+project_auxiliary/tetra3/data/*.npz
